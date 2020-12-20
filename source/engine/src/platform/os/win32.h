@@ -79,6 +79,15 @@ extern "C"
 
     #define CW_USEDEFAULT (int)0x80000000
 
+    #define LPD_SUPPORT_OPENGL 0x00000020
+
+	#define PFD_DRAW_TO_WINDOW 0x00000004
+	#define PFD_DOUBLEBUFFER   0x00000001
+	#define PFD_TYPE_RGBA      0
+	#define PFD_MAIN_PLANE     0
+
+	#define GWLP_USERDATA -21
+
     #ifdef _WIN64
         typedef int half_ptr;
         typedef __int64 int_ptr;
@@ -146,6 +155,36 @@ extern "C"
         unsigned long priv;
     };
 
+    struct PIXELFORMATDESCRIPTOR
+    {
+        unsigned short size;
+        unsigned short version;
+        unsigned long  flags;
+        unsigned char  pixel_type;
+        unsigned char  colour_bits;
+        unsigned char  red_bits;
+        unsigned char  red_shift;
+        unsigned char  green_bits;
+        unsigned char  green_shift;
+        unsigned char  blue_bits;
+        unsigned char  blue_shift;
+        unsigned char  alpha_bits;
+        unsigned char  alpha_shift;
+        unsigned char  accum_bits;
+        unsigned char  accum_red_bits;
+        unsigned char  accum_green_bits;
+        unsigned char  accum_blue_bits;
+        unsigned char  accum_alpha_bits;
+        unsigned char  depth_bits;
+        unsigned char  stencil_bits;
+        unsigned char  aux_buffers;
+        unsigned char  layer_type;
+        unsigned char  reserved;
+        unsigned long  layer_mask;
+        unsigned long  visible_mask;
+        unsigned long  damage_mask;
+    };
+
     import int RegisterClassExW(const WNDCLASSEXW *wc);
     import int RegisterClassExA(const WNDCLASSEXA *wc);
     
@@ -170,11 +209,36 @@ extern "C"
     import long_ptr DispatchMessageW(const MSG* msg);
     import long_ptr DispatchMessageA(const MSG* msg);
 
+    import void* LoadLibraryW(const wchar_t* name);
+    import void* LoadLibraryA(const char* name);
+
     import int TranslateMessage(const MSG* msg);
     
     import int DestroyWindow(void* handle);
 
     import unsigned long GetLastError();
+
+    import void* GetDC(void* handle);
+
+    import int ReleaseDC(void* handle, void* dc);
+
+    import int SwapBuffers(void* dc);
+
+    import void* wglGetProcAddress(const char* name);
+
+    import int DescribePixelFormat(void* dc, int format, unsigned int bytes, PIXELFORMATDESCRIPTOR* pfd);
+
+    import int ChoosePixelFormat(void* dc, const PIXELFORMATDESCRIPTOR* pfd);
+
+    import int SetPixelFormat(void* dc, int format, const PIXELFORMATDESCRIPTOR* pfd);
+
+    import void* wglCreateContext(void* dc);
+
+    import int wglMakeCurrent(void* dc, void* hglrc);
+
+    import int wglDeleteContext(void* hglrc);
+
+    import int FreeLibrary(void* mod);
 
     #ifdef UNICODE_ON
         #define WNDCLASSEX WNDCLASSEXW
@@ -184,6 +248,7 @@ extern "C"
         #define GetModuleHandle GetModuleHandleW
         #define PeekMessage PeekMessageW
         #define DispatchMessage DispatchMessageW
+        #define LoadLibrary LoadLibraryW
     #else 
         #define WNDCLASSEX WNDCLASSEXA
         #define RegisterClassEx RegisterClassExA
@@ -192,6 +257,7 @@ extern "C"
         #define GetModuleHandle GetModuleHandleA
         #define PeekMessage PeekMessageA
         #define DispatchMessage DispatchMessageA
+        #define LoadLibrary LoadLibraryA
     #endif
 }
 

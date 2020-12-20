@@ -4,6 +4,7 @@ project(engine VERSION 1.0.0 LANGUAGES CXX)
 add_library(engine
     src/platform/os/win32.h
     src/platform/os/win32.cpp
+    src/platform/render/ogl.cpp
 )
 
 target_include_directories(engine
