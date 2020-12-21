@@ -1,9 +1,5 @@
 #if defined(_WIN32) || defined(_WIN64)
 
-#pragma comment(lib, "user32.lib")
-#pragma comment(lib, "gdi32.lib")
-#pragma comment(lib, "opengl32.lib")
-
 #include "engine/platform/os.h"
 #include "engine/platform/render/ogl.h"
 #include "win32.h"
