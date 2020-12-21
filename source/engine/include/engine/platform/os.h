@@ -1,4 +1,4 @@
-#include <optional>
+#include <variant>
 #include <stdint.h>
 
 namespace engine 
@@ -11,7 +11,13 @@ namespace engine
         uint32_t height;
     };
 
-    std::optional<Context*> os_create_context(Config& cfg);
+    struct PlatformError 
+    {
+        uint32_t code;
+        int line;
+    };
+
+    std::variant<Context*, PlatformError> os_create_context(Config& cfg);
     void os_update_context(Context* cxt);
     void os_delete_context(Context* cxt);
 } // engine

@@ -5,19 +5,21 @@
 int main()
 {
     engine::Config cfg;
-    cfg.title = "Test";
-    cfg.width = 720;
+    cfg.title  = "Test";
+    cfg.width  = 720;
     cfg.height = 480;
 
-    auto context = engine::os_create_context(cfg);
-    if (!context.has_value()) 
+    auto result   = engine::os_create_context(cfg);
+    auto* context = std::get_if<engine::Context*>(&result);
+    if (!context)
     {
-        printf("monkaW\n");
+        auto e = std::get<engine::PlatformError>(result);
+        printf("Error: %d %d\n", e.code, e.line);
         return -1;
     }
 
-    for (int i = 0; i < 100000000; i++) engine::os_update_context(context.value());
-    engine::os_delete_context(context.value());
+    for (int i = 0; i < 100000000; i++) engine::os_update_context(*context);
+    engine::os_delete_context(*context);
     
     return 0;
 }

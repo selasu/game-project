@@ -15,8 +15,6 @@ target_include_directories(engine
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-target_link_libraries(engine user32 gdi32 opengl32)
-
 target_compile_features(engine PRIVATE cxx_std_17)
 
 target_compile_definitions(engine

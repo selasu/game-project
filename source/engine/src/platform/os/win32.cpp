@@ -1,5 +1,8 @@
 #if defined(_WIN32) || defined(_WIN64)
 
+#pragma comment(lib, "user32.lib")
+#pragma comment(lib, "opengl32.lib")
+
 #include "engine/platform/os.h"
 #include "engine/platform/render/ogl.h"
 #include "win32.h"
@@ -28,6 +31,12 @@
 #define OPENGL_VERSION_MAJOR 3
 #define OPENGL_VERSION_MINOR 3
 
+#define return_os_error(line_no) {\
+    PlatformError e; \
+    e.code = GetLastError(); \
+    e.line = line_no; \
+    return e; }
+
 typedef int(__stdcall wglChoosePixelFormatARB_t)(void*, const int*, const float*, unsigned int, int*, unsigned int*);
 typedef void*(__stdcall wglCreateContextAttribsARB_t)(void*, void*, const int*);
 
@@ -40,7 +49,7 @@ namespace engine
         void* hglrc;
     };
 
-    std::optional<Context*> os_create_context(Config& cfg)
+    std::variant<Context*, PlatformError> os_create_context(Config& cfg)
     {
         wglChoosePixelFormatARB_t* wglChoosePixelFormatARB = nullptr;
         wglCreateContextAttribsARB_t* wglCreateContextAttribsARB = nullptr;
@@ -51,10 +60,12 @@ namespace engine
             wc.callback   = DefWindowProc;
             wc.class_name = "TempClass";
             wc.instance   = GetModuleHandle(0);
-            RegisterClassEx(&wc);
+            if (!RegisterClassEx(&wc)) return_os_error(__LINE__);
 
             auto handle = CreateWindowEx(0, wc.class_name, wc.class_name, 0, 0, 0, 0, 0, 0, 0, wc.instance, 0);
-            auto dc     = GetDC(handle);
+            if (!handle) return_os_error(__LINE__);
+
+            auto dc = GetDC(handle);
 
             PIXELFORMATDESCRIPTOR pfd;
             pfd.size         = sizeof(PIXELFORMATDESCRIPTOR);
@@ -67,10 +78,10 @@ namespace engine
             pfd.layer_type   = PFD_MAIN_PLANE;
 
             auto format = ChoosePixelFormat(dc, &pfd);
-            if (!format || !SetPixelFormat(dc, format, &pfd)) {}
+            if (!format || !SetPixelFormat(dc, format, &pfd)) return_os_error(__LINE__);
 
             auto hglrc = wglCreateContext(dc);
-            if (!hglrc || wglMakeCurrent(dc, hglrc)) {}
+            if (!hglrc || !wglMakeCurrent(dc, hglrc)) return_os_error(__LINE__);
 
             wglChoosePixelFormatARB = (wglChoosePixelFormatARB_t*)wglGetProcAddress("wglChoosePixelFormatARB");
             wglCreateContextAttribsARB = (wglCreateContextAttribsARB_t*)wglGetProcAddress("wglCreateContextAttribsARB");
@@ -90,7 +101,7 @@ namespace engine
         wc.instance   = GetModuleHandle(0);
         wc.class_name = cfg.title;
 
-        if (!RegisterClassEx(&wc)) { printf("reg %d", GetLastError()); return {}; }
+        if (!RegisterClassEx(&wc)) return_os_error(__LINE__);
 
         cxt->handle = CreateWindowEx(
             0,
@@ -103,7 +114,7 @@ namespace engine
             wc.instance,
             cxt
         );
-        if (!cxt->handle) { printf("cre %d", GetLastError()); return {}; }
+        if (!cxt->handle) return_os_error(__LINE__);
         cxt->device_context = GetDC(cxt->handle);
 
         int format_attr[] = {
@@ -121,7 +132,7 @@ namespace engine
         int format;
         unsigned int formatc;
         wglChoosePixelFormatARB(cxt->device_context, format_attr, 0, 1, &format, &formatc);
-        if (!formatc) {}
+        if (!formatc) return_os_error(__LINE__);
 
         PIXELFORMATDESCRIPTOR pfd;
         DescribePixelFormat(cxt->device_context, format, sizeof(pfd), &pfd);
@@ -135,7 +146,7 @@ namespace engine
         };
 
         cxt->hglrc = wglCreateContextAttribsARB(cxt->device_context, 0, ogl_attr);
-        if (!cxt->hglrc || !wglMakeCurrent(cxt->device_context, cxt->hglrc)) {}
+        if (!cxt->hglrc || !wglMakeCurrent(cxt->device_context, cxt->hglrc)) return_os_error(__LINE__);
 
         void* mod = LoadLibrary("opengl32.dll");
         load_opengl_functions(wglGetProcAddress);

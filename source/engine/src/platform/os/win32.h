@@ -197,8 +197,8 @@ extern "C"
         int x, int y, int width, int height, void* wnd_parent, void* menu, void* instance, void* param
     );
 
-    import long_ptr __stdcall DefWindowProcW(void* handle, unsigned int msg, uint_ptr wparam, long_ptr lparam);
-    import long_ptr __stdcall DefWindowProcA(void* handle, unsigned int msg, uint_ptr wparam, long_ptr lparam);
+    import long_ptr DefWindowProcW(void* handle, unsigned int msg, uint_ptr wparam, long_ptr lparam);
+    import long_ptr DefWindowProcA(void* handle, unsigned int msg, uint_ptr wparam, long_ptr lparam);
 
     import void* GetModuleHandleW(const wchar_t* name);
     import void* GetModuleHandleA(const char* name);
