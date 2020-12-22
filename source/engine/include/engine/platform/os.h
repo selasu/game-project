@@ -9,6 +9,9 @@ namespace engine
         const char* title;
         uint32_t width;
         uint32_t height;
+
+        int ogl_version_major;
+        int ogl_version_minor;
     };
 
     struct PlatformError 

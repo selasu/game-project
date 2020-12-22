@@ -5,6 +5,7 @@
 
 #include "engine/platform/os.h"
 #include "engine/platform/render/ogl.h"
+#include "engine/util/assert.h"
 #include "win32.h"
 
 #include <stdio.h>
@@ -28,13 +29,10 @@
 #define WGL_FULL_ACCELERATION_ARB 0x2027
 #define WGL_TYPE_RGBA_ARB         0x202B
 
-#define OPENGL_VERSION_MAJOR 3
-#define OPENGL_VERSION_MINOR 3
-
-#define return_os_error(line_no) {\
+#define return_os_error {\
     PlatformError e; \
     e.code = GetLastError(); \
-    e.line = line_no; \
+    e.line = __LINE__; \
     return e; }
 
 typedef int(__stdcall wglChoosePixelFormatARB_t)(void*, const int*, const float*, unsigned int, int*, unsigned int*);
@@ -60,10 +58,10 @@ namespace engine
             wc.callback   = DefWindowProc;
             wc.class_name = "TempClass";
             wc.instance   = GetModuleHandle(0);
-            if (!RegisterClassEx(&wc)) return_os_error(__LINE__);
+            if (!RegisterClassEx(&wc)) return_os_error
 
             auto handle = CreateWindowEx(0, wc.class_name, wc.class_name, 0, 0, 0, 0, 0, 0, 0, wc.instance, 0);
-            if (!handle) return_os_error(__LINE__);
+            if (!handle) return_os_error
 
             auto dc = GetDC(handle);
 
@@ -78,10 +76,10 @@ namespace engine
             pfd.layer_type   = PFD_MAIN_PLANE;
 
             auto format = ChoosePixelFormat(dc, &pfd);
-            if (!format || !SetPixelFormat(dc, format, &pfd)) return_os_error(__LINE__);
+            if (!format || !SetPixelFormat(dc, format, &pfd)) return_os_error
 
             auto hglrc = wglCreateContext(dc);
-            if (!hglrc || !wglMakeCurrent(dc, hglrc)) return_os_error(__LINE__);
+            if (!hglrc || !wglMakeCurrent(dc, hglrc)) return_os_error
 
             wglChoosePixelFormatARB = (wglChoosePixelFormatARB_t*)wglGetProcAddress("wglChoosePixelFormatARB");
             wglCreateContextAttribsARB = (wglCreateContextAttribsARB_t*)wglGetProcAddress("wglCreateContextAttribsARB");
@@ -101,7 +99,7 @@ namespace engine
         wc.instance   = GetModuleHandle(0);
         wc.class_name = cfg.title;
 
-        if (!RegisterClassEx(&wc)) return_os_error(__LINE__);
+        if (!RegisterClassEx(&wc)) return_os_error
 
         cxt->handle = CreateWindowEx(
             0,
@@ -114,7 +112,7 @@ namespace engine
             wc.instance,
             cxt
         );
-        if (!cxt->handle) return_os_error(__LINE__);
+        if (!cxt->handle) return_os_error
         cxt->device_context = GetDC(cxt->handle);
 
         int format_attr[] = {
@@ -132,21 +130,21 @@ namespace engine
         int format;
         unsigned int formatc;
         wglChoosePixelFormatARB(cxt->device_context, format_attr, 0, 1, &format, &formatc);
-        if (!formatc) return_os_error(__LINE__);
+        if (!formatc) return_os_error
 
         PIXELFORMATDESCRIPTOR pfd;
         DescribePixelFormat(cxt->device_context, format, sizeof(pfd), &pfd);
         if (!SetPixelFormat(cxt->device_context, format, &pfd)) {}
 
         int ogl_attr[] = {
-            WGL_CONTEXT_MAJOR_VERSION_ARB, OPENGL_VERSION_MAJOR,
-            WGL_CONTEXT_MINOR_VERSION_ARB, OPENGL_VERSION_MINOR,
+            WGL_CONTEXT_MAJOR_VERSION_ARB, cfg.ogl_version_major,
+            WGL_CONTEXT_MINOR_VERSION_ARB, cfg.ogl_version_minor,
             WGL_CONTEXT_PROFILE_MASK_ARB,  WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
             0,
         };
 
         cxt->hglrc = wglCreateContextAttribsARB(cxt->device_context, 0, ogl_attr);
-        if (!cxt->hglrc || !wglMakeCurrent(cxt->device_context, cxt->hglrc)) return_os_error(__LINE__);
+        if (!cxt->hglrc || !wglMakeCurrent(cxt->device_context, cxt->hglrc)) return_os_error
 
         void* mod = LoadLibrary("opengl32.dll");
         load_opengl_functions(wglGetProcAddress);
@@ -157,6 +155,8 @@ namespace engine
 
     void os_update_context(Context* cxt)
     {
+        DEV_ASSERT(cxt);
+
         SwapBuffers(cxt->device_context);
 
         MSG msg = {0};
@@ -169,6 +169,8 @@ namespace engine
 
     void os_delete_context(Context* cxt)
     {
+        DEV_ASSERT(cxt);
+
         wglMakeCurrent(cxt->device_context, 0);
         wglDeleteContext(cxt->hglrc);
         ReleaseDC(cxt->handle, cxt->device_context);
