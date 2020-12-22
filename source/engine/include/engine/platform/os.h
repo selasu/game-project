@@ -1,5 +1,9 @@
-#include <variant>
+#include "engine/platform/event.h"
+
+#include <functional>
 #include <stdint.h>
+#include <variant>
+#include <vector>
 
 namespace engine 
 {
@@ -23,4 +27,6 @@ namespace engine
     std::variant<Context*, PlatformError> os_create_context(Config& cfg);
     void os_update_context(Context* cxt);
     void os_delete_context(Context* cxt);
+
+    void os_process_events(Context* cxt, std::function<void(Event)> handler);
 } // engine

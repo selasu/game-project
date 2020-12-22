@@ -20,7 +20,25 @@ int main(int argc, char** argv)
         return -1;
     }
 
-    for (int i = 0; i < 100000000; i++) engine::os_update_context(*context);
+    auto running = true;
+    auto event_handler = [&running](engine::Event e) {
+        switch(e.event_type)
+        {
+            case engine::EventType::QUIT: 
+            {
+                running = false;
+            } break;
+            default:
+                break;
+        }
+    };
+
+    while (running)
+    {
+        engine::os_process_events(*context, event_handler);
+        engine::os_update_context(*context);
+    }
+
     engine::os_delete_context(*context);
     
     return 0;
