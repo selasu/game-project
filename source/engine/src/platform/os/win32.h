@@ -4,6 +4,41 @@
 
 extern "C"
 {
+    #define WM_ACTIVATEAPP            0x001C
+    #define WM_CANCELMODE             0x001F
+    #define WM_CHILDACTIVATE          0x0022
+    #define WM_CLOSE                  0x0010
+    #define WM_COMPACTING             0x0041
+    #define WM_CREATE                 0x0001
+    #define WM_DESTROY                0x0002
+    #define WM_DPICHANGED             0x02E0
+    #define WM_ENABLE                 0x000A
+    #define WM_ENTERSIZEMOVE          0x0231
+    #define WM_EXITSIZEMOVE           0x0232
+    #define WM_GETICON                0x007F
+    #define WM_GETMINMAXINFO          0x0024
+    #define WM_INPUTLANGCHANGE        0x0051
+    #define WM_INPUTLANGCHANGEREQUEST 0x0050
+    #define WM_MOVE                   0x0003
+    #define WM_MOVING                 0x0216
+    #define WM_NCACTIVATE             0x0086
+    #define WM_NCCALCSIZE             0x0083
+    #define WM_NCCREATE               0x0081
+    #define WM_NCDESTROY              0x0082
+    #define WM_NULL                   0x0000
+    #define WM_QUERYDRAGICON          0x0037
+    #define WM_QUERYOPEN              0x0013
+    #define WM_QUIT                   0x0012
+    #define WM_SHOWWINDOW             0x0018
+    #define WM_SIZE                   0x0005
+    #define WM_SIZING                 0x0214
+    #define WM_STYLECHANGED           0x007D
+    #define WM_STYLECHANGING          0x007C
+    #define WM_THEMECHANGED           0x031A
+    #define WM_USERCHANGED            0x0054
+    #define WM_WINDOWPOSCHANGED       0x0047
+    #define WM_WINDOWPOSCHANGING      0x0046
+
     #define WS_EX_ACCEPTFILES         0x00000010L
     #define WS_EX_APPWINDOW           0x00040000L
     #define WS_EX_CLIENTEDGE          0x00000200L
@@ -185,6 +220,38 @@ extern "C"
         unsigned long  damage_mask;
     };
 
+    struct CREATESTRUCTA
+    {
+        void*         create_params;
+        void*         instance;
+        void*         menu;
+        void*         parent_handle;
+        int           cy;
+        int           cx;
+        int           y;
+        int           x;
+        long          style;
+        const char*   name;
+        const char*   class_name;
+        unsigned long ex_style;
+    };
+
+    struct CREATESTRUCTW
+    {
+        void*          create_params;
+        void*          instance;
+        void*          menu;
+        void*          parent_handle;
+        int            cy;
+        int            cx;
+        int            y;
+        int            x;
+        long           style;
+        const wchar_t* name;
+        const wchar_t* class_name;
+        unsigned long  ex_style;
+    };
+
     import int RegisterClassExW(const WNDCLASSEXW *wc);
     import int RegisterClassExA(const WNDCLASSEXA *wc);
     
@@ -211,6 +278,12 @@ extern "C"
 
     import void* LoadLibraryW(const wchar_t* name);
     import void* LoadLibraryA(const char* name);
+
+    import long_ptr GetWindowLongPtrW(void* handle, int index);
+    import long_ptr GetWindowLongPtrA(void* handle, int index);
+
+    import long_ptr SetWindowLongPtrW(void* handle, int index, long_ptr new_ptr);
+    import long_ptr SetWindowLongPtrA(void* handle, int index, long_ptr new_ptr);
 
     import int TranslateMessage(const MSG* msg);
     
@@ -240,8 +313,11 @@ extern "C"
 
     import int FreeLibrary(void* mod);
 
+    import void PostQuitMessage(int exit_code);
+
     #ifdef UNICODE_ON
         #define WNDCLASSEX WNDCLASSEXW
+        #define CREATESTRUCT CREATESTRUCTW
         #define RegisterClassEx RegisterClassExW
         #define CreateWindowEx CreateWindowExW
         #define DefWindowProc DefWindowProcW
@@ -249,8 +325,11 @@ extern "C"
         #define PeekMessage PeekMessageW
         #define DispatchMessage DispatchMessageW
         #define LoadLibrary LoadLibraryW
+        #define GetWindowLongPtr GetWindowLongPtrW
+        #define SetWindowLongPtr SetWindowLongPtrW
     #else 
         #define WNDCLASSEX WNDCLASSEXA
+        #define CREATESTRUCT CREATESTRUCTA
         #define RegisterClassEx RegisterClassExA
         #define CreateWindowEx CreateWindowExA
         #define DefWindowProc DefWindowProcA
@@ -258,6 +337,8 @@ extern "C"
         #define PeekMessage PeekMessageA
         #define DispatchMessage DispatchMessageA
         #define LoadLibrary LoadLibraryA
+        #define GetWindowLongPtr GetWindowLongPtrA
+        #define SetWindowLongPtr SetWindowLongPtrA
     #endif
 }
 
