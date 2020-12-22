@@ -258,8 +258,8 @@ long_ptr __stdcall win32_callback(void* handle, unsigned int msg, uint_ptr wpara
         Event e;
         e.event_type   = EventType::QUIT;
         e.quit_message = (uint32_t)wparam;
-
         cxt->events.push_back(e);
+
         PostQuitMessage(0);
     } break;
 

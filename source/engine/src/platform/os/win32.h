@@ -314,7 +314,7 @@ extern "C"
     import int FreeLibrary(void* mod);
 
     import void PostQuitMessage(int exit_code);
-
+    
     #ifdef UNICODE_ON
         #define WNDCLASSEX WNDCLASSEXW
         #define CREATESTRUCT CREATESTRUCTW
