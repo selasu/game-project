@@ -6,8 +6,14 @@ namespace engine
 {
     enum EventType
     {
+        // Application is currently closing
+        // More info.: https://docs.microsoft.com/en-us/windows/win32/winmsg/wm-close
         CLOSE,
+        // Application is closed
+        // More info.: https://docs.microsoft.com/en-us/windows/win32/winmsg/wm-quit
         QUIT,
+        // The window has been resized
+        // More info.: https://docs.microsoft.com/en-us/windows/win32/winmsg/wm-size
         RESIZE
     };
 

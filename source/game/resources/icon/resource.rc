@@ -1,0 +1,3 @@
+#pragma once
+
+IDR_MAINFRAME ICON "icon.ico"
