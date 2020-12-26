@@ -178,6 +178,12 @@ extern "C"
     #define PAGE_TARGETS_INVALID   0x40000000
     #define PAGE_TARGETS_NO_UPDATE 0x40000000
 
+    #define SEMAPHORE_MODIFY_STATE 0x000002
+    #define SEMAPHORE_ALL_ACCESS   0x1F0003
+
+    #define IGNORE   0
+    #define INFINITE 0xFFFFFFFF
+
     #ifdef _WIN64
         typedef int half_ptr;
         typedef __int64 int_ptr;
@@ -195,6 +201,7 @@ extern "C"
     #endif
 
     typedef long_ptr(__stdcall WindowProc)(void* handle, unsigned int msg, uint_ptr wparam, long_ptr lparam);
+    typedef unsigned long(__stdcall ThreadProc)(void* param);
 
     struct WNDCLASSEXA
     {
@@ -378,10 +385,18 @@ extern "C"
     import long_ptr SetWindowLongPtrW(void* handle, int index, long_ptr new_ptr);
     import long_ptr SetWindowLongPtrA(void* handle, int index, long_ptr new_ptr);
 
-    import void* CreateFileA(const char* filename, unsigned long desired_access, unsigned long share_mode, SECURITY_ATTRIBUTES* sec_attr, 
-        unsigned long creation_disposition, unsigned long flags_and_attrs, void* template_file);
     import void* CreateFileW(const wchar_t* filename, unsigned long desired_access, unsigned long share_mode, SECURITY_ATTRIBUTES* sec_attr, 
         unsigned long creation_disposition, unsigned long flags_and_attrs, void* template_file);
+    import void* CreateFileA(const char* filename, unsigned long desired_access, unsigned long share_mode, SECURITY_ATTRIBUTES* sec_attr, 
+        unsigned long creation_disposition, unsigned long flags_and_attrs, void* template_file);
+
+    import void* CreateSemaphoreExW(SECURITY_ATTRIBUTES* sec_attrs, long inital_count, long max_count, const wchar_t* name,
+        unsigned long flags, unsigned long desired_access);
+    import void* CreateSemaphoreExA(SECURITY_ATTRIBUTES* sec_attrs, long inital_count, long max_count, const char* name,
+        unsigned long flags, unsigned long desired_access);
+
+    import int wsprintfA(char* str, const char* fmt, ...);
+    import int wsprintfW(wchar_t* str, const wchar_t* fmt, ...);
 
     import int TranslateMessage(const MSG* msg);
     
@@ -426,6 +441,25 @@ extern "C"
     import void* VirtualAlloc(void* address, ulong_ptr size, unsigned long alloc_type, unsigned long protection);
 
     import int VirtualFree(void* address, ulong_ptr size, unsigned long free_type);
+
+    import void* CreateThread(SECURITY_ATTRIBUTES* sec_attrs, ulong_ptr size, ThreadProc* thread_proc, void* param, 
+        unsigned long creation_flags, unsigned long* thread_id);
+
+    import unsigned long GetCurrentThreadId();
+
+    import long _InterlockedCompareExchange(long volatile* destination, long change, long comperand);
+    #define InterlockedCompareExchange _InterlockedCompareExchange
+
+    import long _InterlockedIncrement(long volatile* addend);
+    #define InterlockedIncrement _InterlockedIncrement
+
+    import unsigned long WaitForSingleObjectEx(void* handle, unsigned long milliseconds, int alertable);
+
+    import void _WriteBarrier();
+
+    import int ReleaseSemaphore(void* semaphore, long release_count, long* previous_count);
+
+    import void Sleep(unsigned long milliseconds);
     
     #ifdef UNICODE_ON
         #define WNDCLASSEX WNDCLASSEXW
@@ -440,6 +474,8 @@ extern "C"
         #define GetWindowLongPtr GetWindowLongPtrW
         #define SetWindowLongPtr SetWindowLongPtrW
         #define CreateFile CreateFileW
+        #define CreateSemaphoreEx CreateSemaphoreExW
+        #define wsprintf wsprintfW
     #else 
         #define WNDCLASSEX WNDCLASSEXA
         #define CREATESTRUCT CREATESTRUCTA
@@ -453,6 +489,8 @@ extern "C"
         #define GetWindowLongPtr GetWindowLongPtrA
         #define SetWindowLongPtr SetWindowLongPtrA
         #define CreateFile CreateFileA
+        #define CreateSemaphoreEx CreateSemaphoreExA
+        #define wsprintf wsprintfA
     #endif
 }
 

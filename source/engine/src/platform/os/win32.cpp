@@ -1,6 +1,7 @@
 #if defined(_WIN32) || defined(_WIN64)
 
 #pragma comment(lib, "user32.lib")
+#pragma comment(lib, "kernel32.lib")
 #pragma comment(lib, "opengl32.lib")
 
 #include "engine/platform/os.h"
@@ -30,6 +31,8 @@
 #define WGL_FULL_ACCELERATION_ARB 0x2027
 #define WGL_TYPE_RGBA_ARB         0x202B
 
+#define array_count(arr) ((sizeof(arr) / sizeof((arr)[0])))
+
 #define return_os_error {\
     PlatformError e; \
     e.code = GetLastError(); \
@@ -40,9 +43,38 @@ typedef int(__stdcall wglChoosePixelFormatARB_t)(void*, const int*, const float*
 typedef void*(__stdcall wglCreateContextAttribsARB_t)(void*, void*, const int*);
 
 long_ptr __stdcall win32_callback(void* handle, unsigned int msg, uint_ptr wparam, long_ptr lparam);
+unsigned long __stdcall win32_thread_proc(void* param);
+bool perform_job(engine::WorkQueue* queue);
+
+void test_job(engine::WorkQueue* queue, void* data)
+{
+    Sleep(1500);
+    char b[256];
+    wsprintf(b, "Thread #%u: %s\n", GetCurrentThreadId(), (char*)data);
+    printf("%s", b);
+}
 
 namespace engine
 {
+    struct WorkQueueJob
+    {
+        void* data;
+        JobCallback* callback;
+    };
+
+    struct WorkQueue
+    {
+        uint32_t volatile completed;
+        uint32_t volatile to_complete;
+
+        uint32_t volatile next_write_index;
+        uint32_t volatile next_read_index;
+
+        void* semaphore;
+
+        WorkQueueJob jobs[128];
+    };
+    
     struct Context
     {
         void* handle;
@@ -50,10 +82,35 @@ namespace engine
         void* hglrc;
 
         std::vector<Event> events;
+
+        WorkQueue queue;
     };
 
     std::variant<Context*, PlatformError> os_create_context(Config& cfg)
     {
+        auto cxt = new Context;
+
+        WorkQueue queue;
+        queue.semaphore = CreateSemaphoreEx(0, 0, cfg.thread_count, 0, 0, SEMAPHORE_ALL_ACCESS);
+        queue.next_read_index  = 0;
+        queue.next_write_index = 0;
+        queue.to_complete      = 0;
+        queue.completed        = 0;
+        cxt->queue = queue;
+
+        for (uint32_t i = 0; i < cfg.thread_count; ++i)
+        {
+            unsigned long thread_id;
+            auto handle = CreateThread(0, 0, win32_thread_proc, &cxt->queue, 0, &thread_id);
+            CloseHandle(handle);
+        }
+
+        os_add_job(cxt, test_job, "In os_create_context 1");
+        os_add_job(cxt, test_job, "In os_create_context 2");
+        os_add_job(cxt, test_job, "In os_create_context 3");
+        os_add_job(cxt, test_job, "In os_create_context 4");
+        os_add_job(cxt, test_job, "In os_create_context 5");
+
         wglChoosePixelFormatARB_t* wglChoosePixelFormatARB = nullptr;
         wglCreateContextAttribsARB_t* wglCreateContextAttribsARB = nullptr;
 
@@ -109,7 +166,6 @@ namespace engine
 
         if (!RegisterClassEx(&wc)) return_os_error
 
-        auto cxt = new Context;
         cxt->handle = CreateWindowEx(
             0,
             wc.class_name,
@@ -214,6 +270,36 @@ namespace engine
         std::for_each(cxt->events.begin(), cxt->events.end(), handler);
     }
 
+    void os_add_job(Context* context, JobCallback* callback, void* data)
+    {
+        auto queue = &context->queue;
+
+        uint32_t new_write_index = (queue->next_write_index + 1) % array_count(queue->jobs);
+        DEV_ASSERT(new_write_index != queue->next_read_index);
+
+        auto job = queue->jobs + queue->next_write_index;
+        job->callback = callback;
+        job->data     = data;
+
+        ++queue->to_complete;
+
+        _WriteBarrier();
+        queue->next_write_index = new_write_index;
+        ReleaseSemaphore(queue->semaphore, 1, 0);
+    }
+
+    void os_flush_queue(Context* context)
+    {
+        auto queue = &context->queue;
+        while (queue->completed < queue->to_complete)
+        {
+            perform_job(queue);
+        }
+
+        queue->completed   = 0;
+        queue->to_complete = 0;
+    }
+
     OSFile os_read_file(const char* file_name)
     {
         printf("Attempting to read [%s]\n", file_name);
@@ -229,9 +315,9 @@ namespace engine
                 if (file.content)
                 {
                     unsigned long bytes_read;
-                    if (ReadFile(handle, file.content, fsize.quad, &bytes_read, 0) && fsize.quad == bytes_read)
+                    if (ReadFile(handle, file.content, (unsigned long)fsize.quad, &bytes_read, 0) && fsize.quad == bytes_read)
                     {
-                        file.size = fsize.quad;
+                        file.size = (uint32_t)fsize.quad;
                     }
                     else
                     {
@@ -247,12 +333,12 @@ namespace engine
         return file;
     }
 
-    void os_free_file(void* file)
+    void os_free_file(OSFile file)
     {
-        if (file)
+        if (file.content)
         {
-            VirtualFree(file, 0, MEM_RELEASE);
-            file = nullptr;
+            VirtualFree(file.content, 0, MEM_RELEASE);
+            file.content = nullptr;
         }
     }
 
@@ -264,7 +350,7 @@ namespace engine
         if (handle != INVALID_HANDLE_VALUE)
         {
             unsigned long bytes_written;
-            if (WriteFile(handle, memory, memory_size, &bytes_written, 0))
+            if (WriteFile(handle, memory, (unsigned long)memory_size, &bytes_written, 0))
             {
                 result = bytes_written == memory_size;
             }
@@ -351,6 +437,50 @@ long_ptr __stdcall win32_callback(void* handle, unsigned int msg, uint_ptr wpara
         result = DefWindowProc(handle, msg, wparam, lparam);
     }
     return result;
+}
+
+bool perform_job(engine::WorkQueue* queue)
+{
+    using namespace engine;
+    bool sleep = true;
+
+    auto original_read = queue->next_read_index;
+    long next_read     = (original_read + 1) % array_count(queue->jobs);
+
+    if (original_read != queue->next_write_index)
+    {
+        // Ensure this job is still available
+        auto index = InterlockedCompareExchange((long volatile*)&queue->next_read_index, next_read, original_read);
+        if (index == original_read)
+        {
+            // Launch the job and increment the completion count afterwards
+            auto job = queue->jobs[index];
+            job.callback(queue, job.data);
+            InterlockedIncrement((long volatile*)&queue->completed);
+        }
+
+        sleep = false;
+    }
+
+    return sleep;
+}
+
+unsigned long __stdcall win32_thread_proc(void* param)
+{
+    using namespace engine;
+
+    printf("Starting Thread [%d]\n", GetCurrentThreadId());
+
+    auto queue = (WorkQueue*)param;
+
+    while (1)
+    {
+        if (perform_job(queue))
+        {
+            // If the read index matches write index, wait for semaphore to free
+            WaitForSingleObjectEx(queue->semaphore, INFINITE, 0);
+        }
+    }
 }
 
 #endif

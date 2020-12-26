@@ -1,5 +1,7 @@
 #include "engine/asset/wav.h"
+
 #include "engine/platform/os.h"
+#include "engine/util/assert.h"
 
 #pragma pack(push, 1)
 
@@ -37,8 +39,8 @@ enum WAVid
 {
     fmt  = id('f', 'm', 't', ' '),
     data = id('d', 'a', 't', 'a'),
-    riff = id('r', 'i', 'f', 'f'),
-    wave = id('w', 'a', 'v', 'e'),
+    riff = id('R', 'I', 'F', 'F'),
+    wave = id('W', 'A', 'V', 'E'),
 };
 
 inline uint8_t* next(uint8_t* ptr)
@@ -58,29 +60,41 @@ namespace engine
         if (file.size > 0)
         {
             WAVHeader* header = (WAVHeader*)file.content;
+            DEV_ASSERT(header->ckID == WAVid::riff);
+            DEV_ASSERT(header->WAVEID == WAVid::wave);
+
+            // Data to extract from file
+            uint32_t channels    = 0;
+            uint32_t sample_size = 0;
+            int16_t* data        = nullptr;
 
             // 1. Start 1 bit past the header
             // 2. Loop until the end of structure (header + data size - 4 padding)
             // 3. Increment by chunk struct size + chunk data size
-            for (
-                uint8_t* it = (uint8_t*)(header + 1); 
-                it < (uint8_t*)(header + 1) + header->cksize - 4; 
-                it = next(it))
+            for (uint8_t* it = (uint8_t*)(header + 1); it < (uint8_t*)(header + 1) + header->cksize - 4; it = next(it))
             {
                 switch (((WAVChunk*)it)->ckID)
                 {
                     case WAVid::fmt:
                     {
                         auto fmt = (WAVfmt*)(it + sizeof(WAVChunk));
+
+                        DEV_ASSERT(fmt->wFormatTag == 1); // PCM only
+                        DEV_ASSERT(fmt->wBitsPerSample == 16);
+                        DEV_ASSERT(fmt->nBlockAlign == (sizeof(int16_t)*fmt->nChannels));
+
+                        channels = fmt->nChannels;
                     } break;
 
                     case WAVid::data:
                     {
-                        auto data = (int16_t*)(it + sizeof(WAVChunk));
-                        auto size = ((WAVChunk*)it)->cksize;
+                        data        = (int16_t*)(it + sizeof(WAVChunk));
+                        sample_size = ((WAVChunk*)it)->cksize;
                     } break;
                 }
             }
+
+            DEV_ASSERT(channels && data);
         }
     }
 } // engine

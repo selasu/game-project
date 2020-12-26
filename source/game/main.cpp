@@ -14,11 +14,14 @@ int main(int argc, char** argv)
     cfg.title  = "Test";
     cfg.width  = 720;
     cfg.height = 480;
+
     cfg.ogl_version_major = 3;
     cfg.ogl_version_minor = 3;
 
+    cfg.thread_count = 8;
+
     auto result   = os_create_context(cfg);
-    auto* context = std::get_if<Context*>(&result);
+    auto context = *std::get_if<Context*>(&result);
     if (!context)
     {
         auto e = std::get<PlatformError>(result);
@@ -47,14 +50,14 @@ int main(int argc, char** argv)
 
     while (running)
     {
-        os_process_events(*context, event_handler);
-        os_update_context(*context);
+        os_process_events(context, event_handler);
+        os_update_context(context);
 
         glClearColor(77.0f / 255.0f, 0.0f, 153.0f / 255.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
 
-    os_delete_context(*context);
+    os_delete_context(context);
     
     return 0;
 }
