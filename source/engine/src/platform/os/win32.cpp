@@ -1,7 +1,5 @@
 #if defined(_WIN32) || defined(_WIN64)
 
-#pragma comment(lib, "user32.lib")
-#pragma comment(lib, "kernel32.lib")
 #pragma comment(lib, "opengl32.lib")
 
 #include "engine/platform/os.h"
@@ -30,6 +28,8 @@
 
 #define WGL_FULL_ACCELERATION_ARB 0x2027
 #define WGL_TYPE_RGBA_ARB         0x202B
+
+#define QUEUE_SIZE 128
 
 #define array_count(arr) ((sizeof(arr) / sizeof((arr)[0])))
 
@@ -72,7 +72,7 @@ namespace engine
 
         void* semaphore;
 
-        WorkQueueJob jobs[128];
+        WorkQueueJob jobs[QUEUE_SIZE];
     };
     
     struct Context
