@@ -5,6 +5,7 @@ add_library(engine
     src/platform/os/win32.h
     src/platform/os/win32.cpp
     src/platform/render/ogl.cpp
+    src/asset/wav.cpp
 )
 
 target_include_directories(engine
