@@ -158,9 +158,20 @@ namespace engine
         cxt->hglrc = wglCreateContextAttribsARB(cxt->device_context, 0, ogl_attr);
         if (!cxt->hglrc || !wglMakeCurrent(cxt->device_context, cxt->hglrc)) return_os_error
 
+        // Load OpenGL functions
+
         void* mod = LoadLibrary("opengl32.dll");
-        load_opengl_functions(wglGetProcAddress);
+        auto load_function = [&mod](const char* proc_name) {
+            auto f = wglGetProcAddress(proc_name);
+            if (!f || f == (void*)0x1 || f == (void*)0x2 || f == (void*)0x3 || f == (void*)-1)
+            {
+                f = GetProcAddress(mod, proc_name);
+            }
+            return f;
+        };
+        auto res = load_opengl_functions(load_function);
         FreeLibrary(mod);
+        if (!res) return_os_error
 
         return cxt;
     }

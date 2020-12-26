@@ -45,6 +45,7 @@ extern "C"
 	#define GL_FALSE                0
 	#define GL_COLOR_BUFFER_BIT     0x00004000
 	#define GL_ARRAY_BUFFER         0x8892
+	#define GL_DEPTH_BUFFER_BIT     0x0100
 	#define GL_ELEMENT_ARRAY_BUFFER 0x8893
 	#define GL_STATIC_DRAW          0x88E4
 	#define GL_COMPILE_STATUS       0x8B81
@@ -59,7 +60,7 @@ extern "C"
 	extern type_glGetString func_glGetString;
 	#define glGetString func_glGetString
 
-	typedef GLvoid(APIENTRYP type_glClearColor)(GLclampf red, GLclampf blue, GLclampf green, GLclampf alpha);
+	typedef GLvoid(APIENTRYP type_glClearColor)(GLclampf red, GLclampf green, GLclampf blue, GLclampf alpha);
 	extern type_glClearColor func_glClearColor;
 	#define glClearColor func_glClearColor
 

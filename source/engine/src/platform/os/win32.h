@@ -313,6 +313,8 @@ extern "C"
 
     import int FreeLibrary(void* mod);
 
+    import void* GetProcAddress(void* module, const char* proc_name);
+
     import void PostQuitMessage(int exit_code);
     
     #ifdef UNICODE_ON

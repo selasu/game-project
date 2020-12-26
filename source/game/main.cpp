@@ -1,4 +1,5 @@
 #include "engine/platform/os.h"
+#include "engine/platform/render/ogl.h"
 
 #include <stdio.h>
 
@@ -37,6 +38,9 @@ int main(int argc, char** argv)
     {
         engine::os_process_events(*context, event_handler);
         engine::os_update_context(*context);
+
+        glClearColor(77.0f / 255.0f, 0.0f, 153.0f / 255.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
 
     engine::os_delete_context(*context);
