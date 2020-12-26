@@ -213,6 +213,67 @@ namespace engine
 
         std::for_each(cxt->events.begin(), cxt->events.end(), handler);
     }
+
+    OSFile os_read_file(const char* file_name)
+    {
+        printf("Attempting to read [%s]\n", file_name);
+        OSFile file;
+
+        void* handle = CreateFile(file_name, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+        if (handle != INVALID_HANDLE_VALUE)
+        {
+            LARGE_INTEGER fsize;
+            if (GetFileSizeEx(handle, &fsize))
+            {
+                file.content = VirtualAlloc(0, fsize.quad, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+                if (file.content)
+                {
+                    unsigned long bytes_read;
+                    if (ReadFile(handle, file.content, fsize.quad, &bytes_read, 0) && fsize.quad == bytes_read)
+                    {
+                        file.size = fsize.quad;
+                    }
+                    else
+                    {
+                        VirtualFree(file.content, 0, MEM_RELEASE);
+                        file.content = nullptr;
+                    }
+                }
+            }
+
+            CloseHandle(handle);
+        }
+
+        return file;
+    }
+
+    void os_free_file(void* file)
+    {
+        if (file)
+        {
+            VirtualFree(file, 0, MEM_RELEASE);
+            file = nullptr;
+        }
+    }
+
+    bool os_write_file(const char* file_name, uint64_t memory_size, void* memory)
+    {
+        bool result = false;
+
+        void* handle = CreateFile(file_name, GENERIC_WRITE, 0, 0, CREATE_ALWAYS, 0, 0);
+        if (handle != INVALID_HANDLE_VALUE)
+        {
+            unsigned long bytes_written;
+            if (WriteFile(handle, memory, memory_size, &bytes_written, 0))
+            {
+                result = bytes_written == memory_size;
+            }
+
+            CloseHandle(handle);
+        }
+
+        return result;
+    }
 } // engine
 
 long_ptr __stdcall win32_callback(void* handle, unsigned int msg, uint_ptr wparam, long_ptr lparam)

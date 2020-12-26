@@ -7,6 +7,17 @@ int main(int argc, char** argv)
 {
     using namespace engine;
 
+    OSFile file = os_read_file("c:/projects/test.txt");
+    if (file.content)
+    {
+        os_write_file("c:/projects/test.out", file.size, file.content);\
+        os_free_file(file.content);
+    }
+    else
+    {
+        printf("Uh oh\n");
+    }
+
     Config cfg;
     cfg.title  = "Test";
     cfg.width  = 720;

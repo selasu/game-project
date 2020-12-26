@@ -123,6 +123,61 @@ extern "C"
 
 	#define GWLP_USERDATA -21
 
+    #define FILE_ZERO         0x0
+    #define FILE_SHARE_DELETE 0x4
+    #define FILE_SHARE_READ   0x1
+    #define FILE_SHARE_WRITE  0x2
+
+    #define CREATE_ALWAYS     2
+    #define CREATE_NEW        1
+    #define OPEN_ALWAYS       4
+    #define OPEN_EXISTING     3
+    #define TRUNCATE_EXISTING 5
+
+    #define FILE_ATTRIBUTE_ARCHIVE   0x20
+    #define FILE_ATTRIBUTE_ENCRYPTED 0x4000
+    #define FILE_ATTRIBUTE_HIDDEN    0x2
+    #define FILE_ATTRIBUTE_NORMAL    0x80
+    #define FILE_ATTRIBUTE_OFFLINE   0x1000
+    #define FILE_ATTRIBUTE_READONLY  0x1
+    #define FILE_ATTRIBUTE_SYSTEM    0x4
+    #define FILE_ATTRIBUTE_TEMPORARY 0x100
+
+    #define FILE_FLAG_BACKUP_SEMANTICS   0x02000000
+    #define FILE_FLAG_DELETE_ON_CLOSE    0x04000000
+    #define FILE_FLAG_NO_BUFFERING       0x20000000
+    #define FILE_FLAG_OPEN_NO_RECALL     0x00100000
+    #define FILE_FLAG_OPEN_REPARSE_POINT 0x00200000
+    #define FILE_FLAG_OVERLAPPED         0x40000000
+    #define FILE_FLAG_POSIX_SEMANTICS    0x01000000
+    #define FILE_FLAG_RANDOM_ACCESS      0x10000000
+    #define FILE_FLAG_SESSION_AWARE      0x00800000
+    #define FILE_FLAG_SEQUENTIAL_SCAN    0x08000000
+    #define FILE_FLAG_WRITE_THROUGH      0x80000000
+
+    #define INVALID_HANDLE_VALUE (void*)-1
+
+    #define GENERIC_READ  0x80000000
+    #define GENERIC_WRITE 0x40000000
+
+    #define MEM_COMMIT  0x00001000
+    #define MEM_RESERVE 0x00002000
+    #define MEM_RESET   0x00080000
+
+    #define MEM_DECOMMIT 0x00004000
+    #define MEM_RELEASE  0x00008000
+
+    #define PAGE_EXECUTE           0x10
+    #define PAGE_EXECUTE_READ      0x20
+    #define PAGE_EXECUTE_READWRITE 0x40
+    #define PAGE_EXECUTE_WRITECOPY 0x80
+    #define PAGE_NOACCESS          0x01
+    #define PAGE_READONLY          0x02
+    #define PAGE_READWRITE         0x04
+    #define PAGE_WRITECOPY         0x08
+    #define PAGE_TARGETS_INVALID   0x40000000
+    #define PAGE_TARGETS_NO_UPDATE 0x40000000
+
     #ifdef _WIN64
         typedef int half_ptr;
         typedef __int64 int_ptr;
@@ -252,6 +307,44 @@ extern "C"
         unsigned long  ex_style;
     };
 
+    struct SECURITY_ATTRIBUTES
+    {
+        unsigned long length;
+        void*         security_descriptor;
+        int           inherit_handle;
+    };
+
+    union LARGE_INTEGER
+    {
+        struct
+        {
+            unsigned long low;
+            long high;
+        };
+        struct u
+        {
+            unsigned long low;
+            long high;
+        };
+        long long quad;
+    };
+
+    struct OVERLAPPED
+    {
+        ulong_ptr internal;
+        ulong_ptr internal_high;
+        union
+        {
+            struct
+            {
+                unsigned long offset;
+                unsigned long offset_high;
+            };
+            void* pointer;
+        };
+        void* event;
+    };
+
     import int RegisterClassExW(const WNDCLASSEXW *wc);
     import int RegisterClassExA(const WNDCLASSEXA *wc);
     
@@ -285,6 +378,11 @@ extern "C"
     import long_ptr SetWindowLongPtrW(void* handle, int index, long_ptr new_ptr);
     import long_ptr SetWindowLongPtrA(void* handle, int index, long_ptr new_ptr);
 
+    import void* CreateFileA(const char* filename, unsigned long desired_access, unsigned long share_mode, SECURITY_ATTRIBUTES* sec_attr, 
+        unsigned long creation_disposition, unsigned long flags_and_attrs, void* template_file);
+    import void* CreateFileW(const wchar_t* filename, unsigned long desired_access, unsigned long share_mode, SECURITY_ATTRIBUTES* sec_attr, 
+        unsigned long creation_disposition, unsigned long flags_and_attrs, void* template_file);
+
     import int TranslateMessage(const MSG* msg);
     
     import int DestroyWindow(void* handle);
@@ -316,6 +414,18 @@ extern "C"
     import void* GetProcAddress(void* module, const char* proc_name);
 
     import void PostQuitMessage(int exit_code);
+
+    import int GetFileSizeEx(void *file, LARGE_INTEGER* file_size);
+
+    import int CloseHandle(void* file);
+
+    import int ReadFile(void* file, void* buffer, unsigned long bytes_to_read, unsigned long* bytes_read, OVERLAPPED* overlapped);
+
+    import int WriteFile(void* file, void* buffer, unsigned long bytes_to_write, unsigned long* bytes_written, OVERLAPPED*overlapped);
+
+    import void* VirtualAlloc(void* address, ulong_ptr size, unsigned long alloc_type, unsigned long protection);
+
+    import int VirtualFree(void* address, ulong_ptr size, unsigned long free_type);
     
     #ifdef UNICODE_ON
         #define WNDCLASSEX WNDCLASSEXW
@@ -329,6 +439,7 @@ extern "C"
         #define LoadLibrary LoadLibraryW
         #define GetWindowLongPtr GetWindowLongPtrW
         #define SetWindowLongPtr SetWindowLongPtrW
+        #define CreateFile CreateFileW
     #else 
         #define WNDCLASSEX WNDCLASSEXA
         #define CREATESTRUCT CREATESTRUCTA
@@ -341,6 +452,7 @@ extern "C"
         #define LoadLibrary LoadLibraryA
         #define GetWindowLongPtr GetWindowLongPtrA
         #define SetWindowLongPtr SetWindowLongPtrA
+        #define CreateFile CreateFileA
     #endif
 }
 
