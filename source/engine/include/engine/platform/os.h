@@ -13,6 +13,9 @@ namespace engine
         uint32_t width;
         uint32_t height;
 
+        int32_t bytes_per_sample;
+        int32_t samples_per_second;
+
         int ogl_version_major;
         int ogl_version_minor;
 
@@ -29,6 +32,14 @@ namespace engine
     {
         void* content;
         uint32_t size;
+    };
+
+    struct SoundBuffer
+    {
+        int32_t samples_per_second;
+        int32_t sample_count;
+
+        int16_t* samples;
     };
 
     struct Context;

@@ -15,6 +15,9 @@ int main(int argc, char** argv)
     cfg.width  = 720;
     cfg.height = 480;
 
+    cfg.bytes_per_sample   = sizeof(int16_t) * 2;
+    cfg.samples_per_second = 48000;
+
     cfg.ogl_version_major = 3;
     cfg.ogl_version_minor = 3;
 

@@ -54,8 +54,10 @@ inline uint8_t* next(uint8_t* ptr)
 
 namespace engine
 {
-    void load_wav(const char* file_name)
+    Sound load_wav(const char* file_name)
     {
+        Sound sound;
+
         auto file = os_read_file(file_name);
         if (file.size > 0)
         {
@@ -95,6 +97,39 @@ namespace engine
             }
 
             DEV_ASSERT(channels && data);
+
+            sound.channel_count = channels;
+            sound.sample_count = sample_size / (channels * sizeof(int16_t));
+
+            switch (channels)
+            {
+            case 1:
+            {
+                sound.samples[0] = data;
+                sound.samples[1] = nullptr;
+            } break;
+
+            case 2:
+            {
+                sound.samples[0] = data;
+                sound.samples[1] = data + sound.sample_count;
+
+                for (uint32_t sample_index = 0; sample_index < sound.sample_count; ++sample_index)
+                {
+                    auto source = data[2 * sample_index];
+                    data[2 * sample_index] = data[sample_index];
+                    data[sample_index]     = source;
+                }
+            } break;
+
+            default:
+                DEV_ASSERTM(false, "Invalid channel count in WAV file");
+                break;
+            }
+
+            sound.channel_count = 1;
         }
+
+        return sound;
     }
 } // engine
