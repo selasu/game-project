@@ -7,8 +7,6 @@
 #include <windows.h>
 #include <dsound.h>
 
-#include <math.h>
-
 #include "engine/platform/os.h"
 #include "engine/platform/render/ogl.h"
 #include "engine/util/assert.h"
@@ -33,12 +31,14 @@
 #define WGL_TYPE_RGBA_ARB         0x202B
 
 #define QUEUE_SIZE 128
-#define PI 3.14159265359f
 
 #define array_count(arr) ((sizeof(arr) / sizeof((arr)[0])))
 
-#define DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter)
-typedef DIRECT_SOUND_CREATE(direct_sound_create);
+#define DIRECT_SOUND_CREATE(name) HRESULT __stdcall name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter)
+typedef DIRECT_SOUND_CREATE(DirectSoundCreate_t);
+
+int16_t* samples   = 0;
+float    update_hz = 0.0f;
 
 struct Win32WorkQueueJob
 {
@@ -66,7 +66,8 @@ struct Win32SoundInfo
     int32_t bytes_per_sample;
 
     int32_t secondary_buffer_size;
-    int32_t safety_bytes;
+
+    LPDIRECTSOUNDBUFFER secondary_buffer;
 
     float sine;
 };
@@ -75,6 +76,33 @@ typedef BOOL(__stdcall wglChoosePixelFormatARB_t)(HDC, const int*, const FLOAT*,
 typedef HGLRC(__stdcall wglCreateContextAttribsARB_t)(HDC, HGLRC, const int*);
 
 LRESULT __stdcall win32_callback(HWND handle, UINT msg, WPARAM wparam, LPARAM lparam);
+
+#include <math.h>
+
+float tSine = 0;
+#define PI 3.14159265359f
+
+void output_sound(engine::SoundBuffer* sound_buffer)
+{
+    int16_t tone_volume = 3000;
+    int wave_period = sound_buffer->samples_per_second / 400;
+
+    int16_t* output = sound_buffer->samples;
+    for (int sample_index = 0; sample_index < sound_buffer->sample_count; ++sample_index)
+    {
+        float sine = sinf(tSine);
+        int16_t value = (int16_t)(sine * tone_volume);
+
+        *output++ = value;
+        *output++ = value;
+
+        tSine += (2*PI) / 1.0f / (float)wave_period;
+        if (tSine > 2 * PI)
+        {
+            tSine -= 2 * PI;
+        }
+    }
+}
 
 bool perform_job(Win32WorkQueue* queue)
 {
@@ -123,43 +151,55 @@ void test_job(void* data)
     printf("[win32] Thread #%u: %s\n", GetCurrentThreadId(), (char*)data);
 }
 
-void do_sine_wave(LPDIRECTSOUNDBUFFER buffer, Win32SoundInfo* sound_info, DWORD to_lock, DWORD to_write)
+void clear_sound_buffer(Win32SoundInfo* sound_output)
 {
     void *region1, *region2;
     DWORD region1_size, region2_size;
 
-    if (SUCCEEDED(buffer->Lock(to_lock, to_write, &region1, &region1_size, &region2, &region2_size, 0)))
+    if (SUCCEEDED(sound_output->secondary_buffer->Lock(0, sound_output->secondary_buffer_size, &region1, &region1_size, &region2, &region2_size, 0)))
     {
-        DWORD region1_samples = region1_size / sound_info->bytes_per_sample;
-
-        int16_t* destination_sample = (int16_t*)region1;
-        for (DWORD sample_index = 0; sample_index < region1_samples; ++sample_index)
+        uint8_t* output = (uint8_t*)region1;
+        for (DWORD _ = 0; _ < region1_size; ++_)
         {
-            float sine = sinf(sound_info->sine);
-            int16_t sample_value = (int16_t)(sine * 3000);
-
-            *destination_sample++ = sample_value;
-            *destination_sample++ = sample_value;
-
-            sound_info->sine += 2.0f * PI * 1.0f / (float)(sound_info->samples_per_second / 256);
-            ++sound_info->sample_index;
-        }
-        
-        DWORD region2_samples = region2_size / sound_info->bytes_per_sample;
-        destination_sample = (int16_t*)region2;
-        for (DWORD sample_index = 0; sample_index < region2_samples; ++sample_index)
-        {
-            float sine = sinf(sound_info->sine);
-            int16_t sample_value = (int16_t)(sine * 3000);
-
-            *destination_sample++ = sample_value;
-            *destination_sample++ = sample_value;
-
-            sound_info->sine += 2.0f * PI * 1.0f / (float)(sound_info->samples_per_second / 256);
-            ++sound_info->sample_index;
+            *output++ = 0;
         }
 
-        buffer->Unlock(region1, region1_size, region2, region2_size);
+        output = (uint8_t*)region2;
+        for (DWORD _ = 0; _ < region2_size; ++_)
+        {
+            *output++ = 0;
+        }
+
+        sound_output->secondary_buffer->Unlock(region1, region1_size, region2, region2_size);
+    }
+}
+
+void fill_sound_buffer(Win32SoundInfo* sound_output, engine::SoundBuffer* sound_input, DWORD to_lock, DWORD to_write)
+{
+    void *region1, *region2;
+    DWORD region1_size, region2_size;
+
+    if (SUCCEEDED(sound_output->secondary_buffer->Lock(to_lock, to_write, &region1, &region1_size, &region2, &region2_size, 0)))
+    {
+        int16_t* source = sound_input->samples;
+
+        int16_t* output = (int16_t*)region1;
+        for (DWORD sample_index = 0; sample_index < region1_size / sound_output->bytes_per_sample; ++sample_index)
+        {
+            *output++ = *source++;
+            *output++ = *source++;
+            ++sound_output->sample_index;
+        }
+
+        output = (int16_t*)region2;
+        for (DWORD sample_index = 0; sample_index < region2_size / sound_output->bytes_per_sample; ++sample_index)
+        {
+            *output++ = *source++;
+            *output++ = *source++;
+            ++sound_output->sample_index;
+        }
+
+        sound_output->secondary_buffer->Unlock(region1, region1_size, region2, region2_size);
     }
 }
 
@@ -174,35 +214,29 @@ namespace engine
         std::vector<Event> events;
 
         Win32WorkQueue queue;
-
-        Win32SoundInfo      sound_info;
-        LPDIRECTSOUNDBUFFER secondary_buffer;
+        Win32SoundInfo sound_info;
     };
 
-    Context* os_create_context(Config& cfg)
+    PlatformData* os_create_context(Config& cfg)
     {
-        auto cxt = new Context;
+        auto context = new Context;
 
-        Win32WorkQueue queue;
+        Win32WorkQueue queue = {};
         queue.semaphore = CreateSemaphoreEx(0, 0, cfg.thread_count, 0, 0, SEMAPHORE_ALL_ACCESS);
-        queue.next_read_index  = 0;
-        queue.next_write_index = 0;
-        queue.to_complete      = 0;
-        queue.completed        = 0;
-        cxt->queue = queue;
+        context->queue = queue;
 
         for (uint32_t i = 0; i < cfg.thread_count; ++i)
         {
             unsigned long thread_id;
-            auto handle = CreateThread(0, 0, win32_thread_proc, &cxt->queue, 0, &thread_id);
+            auto handle = CreateThread(0, 0, win32_thread_proc, &context->queue, 0, &thread_id);
             CloseHandle(handle);
         }
 
-        os_add_job(cxt, test_job, "In os_create_context 1");
-        os_add_job(cxt, test_job, "In os_create_context 2");
-        os_add_job(cxt, test_job, "In os_create_context 3");
-        os_add_job(cxt, test_job, "In os_create_context 4");
-        os_add_job(cxt, test_job, "In os_create_context 5");
+        os_add_job(context, test_job, "In os_create_context 1");
+        os_add_job(context, test_job, "In os_create_context 2");
+        os_add_job(context, test_job, "In os_create_context 3");
+        os_add_job(context, test_job, "In os_create_context 4");
+        os_add_job(context, test_job, "In os_create_context 5");
 
         wglChoosePixelFormatARB_t* wglChoosePixelFormatARB = nullptr;
         wglCreateContextAttribsARB_t* wglCreateContextAttribsARB = nullptr;
@@ -274,13 +308,13 @@ namespace engine
 
         }
 
-        cxt->handle = CreateWindowExA(0, wc.lpszClassName, cfg.title, WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-            CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, wc.hInstance, cxt);
-        if (!cxt->handle) 
+        context->handle = CreateWindowExA(0, wc.lpszClassName, cfg.title, WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, wc.hInstance, context);
+        if (!context->handle) 
         {
 
         }
-        cxt->device_context = GetDC(cxt->handle);
+        context->device_context = GetDC(context->handle);
 
         // Create a proper OpenGL context
         // More info. here: https://www.khronos.org/opengl/wiki/Creating_an_OpenGL_Context_(WGL)
@@ -299,15 +333,15 @@ namespace engine
 
         int format;
         unsigned int formatc;
-        wglChoosePixelFormatARB(cxt->device_context, format_attr, 0, 1, &format, &formatc);
+        wglChoosePixelFormatARB(context->device_context, format_attr, 0, 1, &format, &formatc);
         if (!formatc) 
         {
 
         }
 
         PIXELFORMATDESCRIPTOR pfd;
-        DescribePixelFormat(cxt->device_context, format, sizeof(pfd), &pfd);
-        if (!SetPixelFormat(cxt->device_context, format, &pfd)) {}
+        DescribePixelFormat(context->device_context, format, sizeof(pfd), &pfd);
+        if (!SetPixelFormat(context->device_context, format, &pfd)) {}
 
         int ogl_attr[] = {
             WGL_CONTEXT_MAJOR_VERSION_ARB, cfg.ogl_version_major,
@@ -316,8 +350,8 @@ namespace engine
             0,
         };
 
-        cxt->hglrc = wglCreateContextAttribsARB(cxt->device_context, 0, ogl_attr);
-        if (!cxt->hglrc || !wglMakeCurrent(cxt->device_context, cxt->hglrc)) 
+        context->hglrc = wglCreateContextAttribsARB(context->device_context, 0, ogl_attr);
+        if (!context->hglrc || !wglMakeCurrent(context->device_context, context->hglrc)) 
         {
 
         }
@@ -341,13 +375,6 @@ namespace engine
 
         }
 
-        int32_t refreshhz = 60;
-        int win32_refresh = GetDeviceCaps(cxt->device_context, VREFRESH);
-        if (win32_refresh > 1)
-        {
-            refreshhz = win32_refresh;
-        }
-
         // Query the refresh rate
         int32_t refresh_rate = 60;
 
@@ -358,19 +385,18 @@ namespace engine
             refresh_rate = (int32_t)dev_mode.dmDisplayFrequency;
         }
 
-        float update_hz = (float)refresh_rate / 2.0f;
+        update_hz = (float)refresh_rate / 2.0f;
 
         Win32SoundInfo sound_info = {};
         sound_info.samples_per_second    = cfg.samples_per_second;
         sound_info.bytes_per_sample      = cfg.bytes_per_sample;
         sound_info.secondary_buffer_size = sound_info.samples_per_second * sound_info.bytes_per_sample;
-        sound_info.safety_bytes          = (int32_t)((float)sound_info.secondary_buffer_size / update_hz / 3.0f);
-        cxt->sound_info = sound_info;
+        context->sound_info = sound_info;
 
         auto dsound_lib = LoadLibraryA("dsound.dll");
         if (dsound_lib)
         {
-            auto DirectSoundCreate = (direct_sound_create*)GetProcAddress(dsound_lib, "DirectSoundCreate");
+            auto DirectSoundCreate = (DirectSoundCreate_t*)GetProcAddress(dsound_lib, "DirectSoundCreate");
             LPDIRECTSOUND dsound;
 
             if (DirectSoundCreate && SUCCEEDED(DirectSoundCreate(0, &dsound, 0)))
@@ -383,7 +409,7 @@ namespace engine
                 wave_format.nBlockAlign     = (wave_format.nChannels * wave_format.wBitsPerSample) / 8;
                 wave_format.nAvgBytesPerSec = wave_format.nSamplesPerSec * wave_format.nBlockAlign;
 
-                if (SUCCEEDED(dsound->SetCooperativeLevel(cxt->handle, DSSCL_PRIORITY)))
+                if (SUCCEEDED(dsound->SetCooperativeLevel(context->handle, DSSCL_PRIORITY)))
                 {
                     LPDIRECTSOUNDBUFFER buffer;
                     DSBUFFERDESC buffer_desc = {};
@@ -405,37 +431,42 @@ namespace engine
                 buffer_desc.dwBufferBytes = sound_info.secondary_buffer_size;
                 buffer_desc.lpwfxFormat   = &wave_format;
 
-                if (SUCCEEDED(dsound->CreateSoundBuffer(&buffer_desc, &cxt->secondary_buffer, 0)))
+                if (SUCCEEDED(dsound->CreateSoundBuffer(&buffer_desc, &context->sound_info.secondary_buffer, 0)))
                 {
                     printf("[win32] Created Secondary Buffer\n");
                 }
             }
         }
 
-        do_sine_wave(cxt->secondary_buffer, &cxt->sound_info, 0, sound_info.samples_per_second / 15 * sound_info.bytes_per_sample);
-        cxt->secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
+        clear_sound_buffer(&context->sound_info);
+        context->sound_info.secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
 
-        return cxt;
+        samples = (int16_t*)VirtualAlloc(0, context->sound_info.secondary_buffer_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+
+        auto platform_data = new PlatformData;
+        platform_data->context = context;
+
+        return platform_data;
     }
 
-    void os_update_context(Context* cxt)
+    void os_update_context(PlatformData* platform_data)
     {
-        DEV_ASSERT(cxt);
+        DEV_ASSERT(platform_data && platform_data->context);
 
-        SwapBuffers(cxt->device_context);
+        SwapBuffers(platform_data->context->device_context);
 
-        auto sound_info = cxt->sound_info;
-        DWORD play_cursor;
-        DWORD write_cursor;
-        if (cxt->secondary_buffer->GetCurrentPosition(&play_cursor, &write_cursor) == DS_OK)
+        auto sound_info = &platform_data->context->sound_info;
+        DWORD play_cursor, write_cursor, to_lock, to_write;
+        bool sound_is_valid = false;
+        if (sound_info->secondary_buffer->GetCurrentPosition(&play_cursor, &write_cursor) == DS_OK)
         {
-            DWORD to_lock = (sound_info.sample_index * sound_info.bytes_per_sample) % sound_info.secondary_buffer_size;
-            DWORD target_cursor = (play_cursor + (sound_info.samples_per_second / 15 * sound_info.bytes_per_sample)) % sound_info.secondary_buffer_size;
-            DWORD to_write;
+            DWORD target_cursor = (play_cursor + (sound_info->samples_per_second / 15 * sound_info->bytes_per_sample)) % sound_info->secondary_buffer_size;
+            
+            to_lock = (sound_info->sample_index * sound_info->bytes_per_sample) % sound_info->secondary_buffer_size;
 
             if (to_lock > target_cursor)
             {
-                to_write = sound_info.secondary_buffer_size - to_lock;
+                to_write = sound_info->secondary_buffer_size - to_lock;
                 to_write += target_cursor;
             }
             else
@@ -443,11 +474,24 @@ namespace engine
                 to_write = target_cursor - to_lock;
             }
 
-            do_sine_wave(cxt->secondary_buffer, &cxt->sound_info, to_lock, to_write);
+            sound_is_valid = true;
+        }
+
+        SoundBuffer sound_buffer = {};
+        sound_buffer.samples_per_second = sound_info->samples_per_second;
+        sound_buffer.sample_count = to_write / sound_info->bytes_per_sample;
+        sound_buffer.samples = samples;
+
+        output_sound(&sound_buffer);
+
+        if (sound_is_valid)
+        {
+            fill_sound_buffer(sound_info, &sound_buffer, to_lock, to_write);
+            //printf("Filled sound\n");
         }
 
         // Assumes all events have been handled by user
-        cxt->events.clear();
+        platform_data->context->events.clear();
         MSG msg = {0};
         while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
         {
@@ -456,29 +500,29 @@ namespace engine
         }
     }
 
-    void os_delete_context(Context* cxt)
+    void os_delete_context(PlatformData* platform_data)
     {
-        DEV_ASSERT(cxt);
+        DEV_ASSERT(platform_data && platform_data->context);
 
-        wglMakeCurrent(cxt->device_context, 0);
-        wglDeleteContext(cxt->hglrc);
-        ReleaseDC(cxt->handle, cxt->device_context);
-        DestroyWindow(cxt->handle);
+        wglDeleteContext(platform_data->context->hglrc);
+        ReleaseDC(platform_data->context->handle, platform_data->context->device_context);
+        DestroyWindow(platform_data->context->handle);
         
-        delete cxt;
-        cxt = nullptr;
+        delete platform_data->context;
+        delete platform_data;
+        platform_data = nullptr;
     }
 
-    uint32_t os_poll_error()
+    uint32_t os_poll_error(void)
     {
         return (uint32_t)GetLastError();
     }
 
-    void os_process_events(Context* cxt, std::function<void(Event)> handler)
+    void os_process_events(Context* context, std::function<void(Event)> handler)
     {
-        DEV_ASSERT(cxt);
+        DEV_ASSERT(context);
 
-        std::for_each(cxt->events.begin(), cxt->events.end(), handler);
+        std::for_each(context->events.begin(), context->events.end(), handler);
     }
 
     void os_add_job(Context* context, std::function<void(void*)> callback, void* data)
@@ -579,13 +623,13 @@ LRESULT __stdcall win32_callback(HWND handle, UINT msg, WPARAM wparam, LPARAM lp
 
     // Attempt to load the context; if it can't be found, then we can't do any operations with
     // most of the WM messages, so we simply pass back to the default procedure on failure
-    Context* cxt = nullptr;
+    Context* context = nullptr;
     if (msg != WM_CREATE)
     {
         auto ptr = GetWindowLongPtr(handle, GWLP_USERDATA);
-        cxt = reinterpret_cast<Context*>(ptr);
+        context = reinterpret_cast<Context*>(ptr);
 
-        if (!cxt)
+        if (!context)
         {
             return DefWindowProc(handle, msg, wparam, lparam);
         }
@@ -601,8 +645,8 @@ LRESULT __stdcall win32_callback(HWND handle, UINT msg, WPARAM wparam, LPARAM lp
     {
         // Load the context from the parameters and save it into a long pointer we can call later
         auto cs = reinterpret_cast<CREATESTRUCT*>(lparam);
-        cxt = reinterpret_cast<Context*>(cs->lpCreateParams);
-        SetWindowLongPtr(handle, GWLP_USERDATA, (LONG_PTR)cxt);
+        context = reinterpret_cast<Context*>(cs->lpCreateParams);
+        SetWindowLongPtr(handle, GWLP_USERDATA, (LONG_PTR)context);
     } break;
 
     case WM_CLOSE:
@@ -611,7 +655,7 @@ LRESULT __stdcall win32_callback(HWND handle, UINT msg, WPARAM wparam, LPARAM lp
         Event e;
         e.event_type = EventType::CLOSE;
 
-        cxt->events.push_back(e);
+        context->events.push_back(e);
 
         // Since we aren't actually handling this event yet, just call destroy window can be
         // processed. Removing this means the application won't close.
@@ -627,7 +671,7 @@ LRESULT __stdcall win32_callback(HWND handle, UINT msg, WPARAM wparam, LPARAM lp
         Event e;
         e.event_type   = EventType::QUIT;
         e.quit_message = (uint32_t)wparam;
-        cxt->events.push_back(e);
+        context->events.push_back(e);
 
         PostQuitMessage(0);
     } break;
@@ -640,7 +684,7 @@ LRESULT __stdcall win32_callback(HWND handle, UINT msg, WPARAM wparam, LPARAM lp
         e.width      = lparam & 0xFFFF;
         e.height     = (lparam >> 16) & 0xFFFF;
 
-        cxt->events.push_back(e);
+        context->events.push_back(e);
     };
 
     default:

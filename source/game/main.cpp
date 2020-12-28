@@ -23,8 +23,8 @@ int main(int argc, char** argv)
 
     cfg.thread_count = 8;
 
-    auto context = os_create_context(cfg);
-    if (!context)
+    auto platform_data = os_create_context(cfg);
+    if (!platform_data)
     {
         printf("Error: %u\n", os_poll_error());
         return -1;
@@ -51,14 +51,15 @@ int main(int argc, char** argv)
 
     while (running)
     {
-        os_process_events(context, event_handler);
-        os_update_context(context);
+        os_process_events(platform_data->context, event_handler);
 
         glClearColor(77.0f / 255.0f, 0.0f, 153.0f / 255.0f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        os_update_context(platform_data);
     }
 
-    os_delete_context(context);
+    os_delete_context(platform_data);
     
     return 0;
 }

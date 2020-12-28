@@ -36,9 +36,15 @@ namespace engine
 
     struct Context;
 
-    Context* os_create_context(Config& cfg);
-    void os_update_context(Context* cxt);
-    void os_delete_context(Context* cxt);
+    struct PlatformData
+    {
+        SoundBuffer sound_buffer;
+        Context*    context;
+    };
+
+    PlatformData* os_create_context(Config& cfg);
+    void os_update_context(PlatformData* platform_data);
+    void os_delete_context(PlatformData* platform_data);
 
     uint32_t os_poll_error(void);
 
