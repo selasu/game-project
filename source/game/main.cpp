@@ -23,12 +23,10 @@ int main(int argc, char** argv)
 
     cfg.thread_count = 8;
 
-    auto result   = os_create_context(cfg);
-    auto context = *std::get_if<Context*>(&result);
+    auto context = os_create_context(cfg);
     if (!context)
     {
-        auto e = std::get<PlatformError>(result);
-        printf("Error: %d %d\n", e.code, e.line);
+        printf("Error: %u\n", os_poll_error());
         return -1;
     }
 

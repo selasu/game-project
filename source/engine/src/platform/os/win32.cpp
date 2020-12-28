@@ -37,41 +37,91 @@
 
 #define array_count(arr) ((sizeof(arr) / sizeof((arr)[0])))
 
-#define return_os_error {\
-    PlatformError e; \
-    e.code = GetLastError(); \
-    e.line = __LINE__; \
-    return e; }
-
-
-DWORD running_sample_index = 0;
-
 #define DIRECT_SOUND_CREATE(name) HRESULT WINAPI name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter)
 typedef DIRECT_SOUND_CREATE(direct_sound_create);
 
-typedef BOOL(__stdcall wglChoosePixelFormatARB_t)(HDC, const int*, const FLOAT*, UINT, int*, UINT*);
-typedef HGLRC(__stdcall wglCreateContextAttribsARB_t)(HDC, HGLRC, const int*);
-
-LRESULT __stdcall win32_callback(HWND handle, UINT msg, WPARAM wparam, LPARAM lparam);
-unsigned long __stdcall win32_thread_proc(void* param);
-bool perform_job(engine::WorkQueue* queue);
-
-void test_job(engine::WorkQueue* queue, void* data)
+struct Win32WorkQueueJob
 {
-    Sleep(1500);
-    printf("Thread #%u: %s\n", GetCurrentThreadId(), (char*)data);
-}
+    void* data;
+    std::function<void(void*)> callback;
+};
+
+struct Win32WorkQueue
+{
+    uint32_t volatile completed;
+    uint32_t volatile to_complete;
+
+    uint32_t volatile next_write_index;
+    uint32_t volatile next_read_index;
+
+    HANDLE semaphore;
+
+    Win32WorkQueueJob jobs[QUEUE_SIZE];
+};
 
 struct Win32SoundInfo
 {
     int32_t sample_index;
     int32_t samples_per_second;
     int32_t bytes_per_sample;
+
     int32_t secondary_buffer_size;
     int32_t safety_bytes;
 
     float sine;
 };
+
+typedef BOOL(__stdcall wglChoosePixelFormatARB_t)(HDC, const int*, const FLOAT*, UINT, int*, UINT*);
+typedef HGLRC(__stdcall wglCreateContextAttribsARB_t)(HDC, HGLRC, const int*);
+
+LRESULT __stdcall win32_callback(HWND handle, UINT msg, WPARAM wparam, LPARAM lparam);
+
+bool perform_job(Win32WorkQueue* queue)
+{
+    bool sleep = true;
+
+    auto original_read = queue->next_read_index;
+    long next_read     = (original_read + 1) % array_count(queue->jobs);
+
+    if (original_read != queue->next_write_index)
+    {
+        // Ensure this job is still available
+        auto index = InterlockedCompareExchange((long volatile*)&queue->next_read_index, next_read, original_read);
+        if (index == original_read)
+        {
+            // Launch the job and increment the completion count afterwards
+            auto job = queue->jobs[index];
+            job.callback(job.data);
+            InterlockedIncrement((long volatile*)&queue->completed);
+        }
+
+        sleep = false;
+    }
+
+    return sleep;
+}
+
+unsigned long __stdcall win32_thread_proc(void* param)
+{
+    printf("[win32] Thread #%u: Starting...\n", GetCurrentThreadId());
+
+    auto queue = (Win32WorkQueue*)param;
+
+    while (1)
+    {
+        if (perform_job(queue))
+        {
+            // If the read index matches write index, wait for semaphore to free
+            WaitForSingleObjectEx(queue->semaphore, INFINITE, 0);
+        }
+    }
+}
+
+void test_job(void* data)
+{
+    Sleep(1500);
+    printf("[win32] Thread #%u: %s\n", GetCurrentThreadId(), (char*)data);
+}
 
 void do_sine_wave(LPDIRECTSOUNDBUFFER buffer, Win32SoundInfo* sound_info, DWORD to_lock, DWORD to_write)
 {
@@ -114,26 +164,7 @@ void do_sine_wave(LPDIRECTSOUNDBUFFER buffer, Win32SoundInfo* sound_info, DWORD 
 }
 
 namespace engine
-{
-    struct WorkQueueJob
-    {
-        void* data;
-        JobCallback* callback;
-    };
-
-    struct WorkQueue
-    {
-        uint32_t volatile completed;
-        uint32_t volatile to_complete;
-
-        uint32_t volatile next_write_index;
-        uint32_t volatile next_read_index;
-
-        void* semaphore;
-
-        WorkQueueJob jobs[QUEUE_SIZE];
-    };
-    
+{   
     struct Context
     {
         HWND  handle;
@@ -142,17 +173,17 @@ namespace engine
         
         std::vector<Event> events;
 
-        WorkQueue queue;
+        Win32WorkQueue queue;
 
         Win32SoundInfo      sound_info;
         LPDIRECTSOUNDBUFFER secondary_buffer;
     };
 
-    std::variant<Context*, PlatformError> os_create_context(Config& cfg)
+    Context* os_create_context(Config& cfg)
     {
         auto cxt = new Context;
 
-        WorkQueue queue;
+        Win32WorkQueue queue;
         queue.semaphore = CreateSemaphoreEx(0, 0, cfg.thread_count, 0, 0, SEMAPHORE_ALL_ACCESS);
         queue.next_read_index  = 0;
         queue.next_write_index = 0;
@@ -183,12 +214,18 @@ namespace engine
             WNDCLASSEXA wc = {0};
             wc.cbSize        = sizeof(WNDCLASSEX);
             wc.lpfnWndProc   = DefWindowProc;
-            wc.lpszClassName = "TempClass";
+            wc.lpszClassName = "SelengineWGLLoader";
             wc.hInstance     = GetModuleHandle(0);
-            if (!RegisterClassExA(&wc)) return_os_error
+            if (!RegisterClassExA(&wc)) 
+            {
+
+            }
 
             auto handle = CreateWindowExA(0, wc.lpszClassName, wc.lpszClassName, 0, 0, 0, 0, 0, 0, 0, wc.hInstance, 0);
-            if (!handle) return_os_error
+            if (!handle) 
+            {
+
+            }
 
             auto dc = GetDC(handle);
 
@@ -203,10 +240,16 @@ namespace engine
             pfd.iLayerType   = PFD_MAIN_PLANE;
 
             auto format = ChoosePixelFormat(dc, &pfd);
-            if (!format || !SetPixelFormat(dc, format, &pfd)) return_os_error
+            if (!format || !SetPixelFormat(dc, format, &pfd)) 
+            {
+
+            }
 
             auto hglrc = wglCreateContext(dc);
-            if (!hglrc || !wglMakeCurrent(dc, hglrc)) return_os_error
+            if (!hglrc || !wglMakeCurrent(dc, hglrc)) 
+            {
+
+            }
 
             wglChoosePixelFormatARB = (wglChoosePixelFormatARB_t*)wglGetProcAddress("wglChoosePixelFormatARB");
             wglCreateContextAttribsARB = (wglCreateContextAttribsARB_t*)wglGetProcAddress("wglCreateContextAttribsARB");
@@ -226,20 +269,17 @@ namespace engine
         wc.lpszClassName = cfg.title;
         wc.hInstance     = GetModuleHandle(0);
 
-        if (!RegisterClassExA(&wc)) return_os_error
+        if (!RegisterClassExA(&wc)) 
+        {
 
-        cxt->handle = CreateWindowExA(
-            0,
-            wc.lpszClassName,
-            cfg.title,
-            WS_OVERLAPPEDWINDOW | WS_VISIBLE,
-            CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, 
-            NULL,
-            NULL,
-            wc.hInstance,
-            cxt
-        );
-        if (!cxt->handle) return_os_error
+        }
+
+        cxt->handle = CreateWindowExA(0, wc.lpszClassName, cfg.title, WS_OVERLAPPEDWINDOW | WS_VISIBLE,
+            CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, wc.hInstance, cxt);
+        if (!cxt->handle) 
+        {
+
+        }
         cxt->device_context = GetDC(cxt->handle);
 
         // Create a proper OpenGL context
@@ -260,7 +300,10 @@ namespace engine
         int format;
         unsigned int formatc;
         wglChoosePixelFormatARB(cxt->device_context, format_attr, 0, 1, &format, &formatc);
-        if (!formatc) return_os_error
+        if (!formatc) 
+        {
+
+        }
 
         PIXELFORMATDESCRIPTOR pfd;
         DescribePixelFormat(cxt->device_context, format, sizeof(pfd), &pfd);
@@ -274,7 +317,10 @@ namespace engine
         };
 
         cxt->hglrc = wglCreateContextAttribsARB(cxt->device_context, 0, ogl_attr);
-        if (!cxt->hglrc || !wglMakeCurrent(cxt->device_context, cxt->hglrc)) return_os_error
+        if (!cxt->hglrc || !wglMakeCurrent(cxt->device_context, cxt->hglrc)) 
+        {
+
+        }
 
         // Load OpenGL functions
 
@@ -289,7 +335,11 @@ namespace engine
         };
         auto res = load_opengl_functions(load_function);
         FreeLibrary(mod);
-        if (!res) return_os_error
+
+        if (!res) 
+        {
+
+        }
 
         int32_t refreshhz = 60;
         int win32_refresh = GetDeviceCaps(cxt->device_context, VREFRESH);
@@ -419,6 +469,11 @@ namespace engine
         cxt = nullptr;
     }
 
+    uint32_t os_poll_error()
+    {
+        return (uint32_t)GetLastError();
+    }
+
     void os_process_events(Context* cxt, std::function<void(Event)> handler)
     {
         DEV_ASSERT(cxt);
@@ -426,7 +481,7 @@ namespace engine
         std::for_each(cxt->events.begin(), cxt->events.end(), handler);
     }
 
-    void os_add_job(Context* context, JobCallback* callback, void* data)
+    void os_add_job(Context* context, std::function<void(void*)> callback, void* data)
     {
         auto queue = &context->queue;
 
@@ -593,50 +648,6 @@ LRESULT __stdcall win32_callback(HWND handle, UINT msg, WPARAM wparam, LPARAM lp
         result = DefWindowProc(handle, msg, wparam, lparam);
     }
     return result;
-}
-
-bool perform_job(engine::WorkQueue* queue)
-{
-    using namespace engine;
-    bool sleep = true;
-
-    auto original_read = queue->next_read_index;
-    long next_read     = (original_read + 1) % array_count(queue->jobs);
-
-    if (original_read != queue->next_write_index)
-    {
-        // Ensure this job is still available
-        auto index = InterlockedCompareExchange((long volatile*)&queue->next_read_index, next_read, original_read);
-        if (index == original_read)
-        {
-            // Launch the job and increment the completion count afterwards
-            auto job = queue->jobs[index];
-            job.callback(queue, job.data);
-            InterlockedIncrement((long volatile*)&queue->completed);
-        }
-
-        sleep = false;
-    }
-
-    return sleep;
-}
-
-unsigned long __stdcall win32_thread_proc(void* param)
-{
-    using namespace engine;
-
-    printf("Starting Thread [%d]\n", GetCurrentThreadId());
-
-    auto queue = (WorkQueue*)param;
-
-    while (1)
-    {
-        if (perform_job(queue))
-        {
-            // If the read index matches write index, wait for semaphore to free
-            WaitForSingleObjectEx(queue->semaphore, INFINITE, 0);
-        }
-    }
 }
 
 #endif
