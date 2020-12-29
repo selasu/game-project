@@ -77,33 +77,6 @@ typedef HGLRC(__stdcall wglCreateContextAttribsARB_t)(HDC, HGLRC, const int*);
 
 LRESULT __stdcall win32_callback(HWND handle, UINT msg, WPARAM wparam, LPARAM lparam);
 
-#include <math.h>
-
-float tSine = 0;
-#define PI 3.14159265359f
-
-void output_sound(engine::SoundBuffer* sound_buffer)
-{
-    int16_t tone_volume = 3000;
-    int wave_period = sound_buffer->samples_per_second / 400;
-
-    int16_t* output = sound_buffer->samples;
-    for (int sample_index = 0; sample_index < sound_buffer->sample_count; ++sample_index)
-    {
-        float sine = sinf(tSine);
-        int16_t value = (int16_t)(sine * tone_volume);
-
-        *output++ = value;
-        *output++ = value;
-
-        tSine += (2*PI) / 1.0f / (float)wave_period;
-        if (tSine > 2 * PI)
-        {
-            tSine -= 2 * PI;
-        }
-    }
-}
-
 bool perform_job(Win32WorkQueue* queue)
 {
     bool sleep = true;
@@ -445,6 +418,7 @@ namespace engine
 
         auto platform_data = new PlatformData;
         platform_data->context = context;
+        platform_data->sound_buffer.samples = samples;
 
         return platform_data;
     }
@@ -477,18 +451,15 @@ namespace engine
             sound_is_valid = true;
         }
 
-        SoundBuffer sound_buffer = {};
-        sound_buffer.samples_per_second = sound_info->samples_per_second;
-        sound_buffer.sample_count = to_write / sound_info->bytes_per_sample;
-        sound_buffer.samples = samples;
-
-        output_sound(&sound_buffer);
-
         if (sound_is_valid)
         {
-            fill_sound_buffer(sound_info, &sound_buffer, to_lock, to_write);
-            //printf("Filled sound\n");
+            fill_sound_buffer(sound_info, &platform_data->sound_buffer, to_lock, to_write);
         }
+
+        //SoundBuffer sound_buffer = {};
+        platform_data->sound_buffer.samples_per_second = sound_info->samples_per_second;
+        platform_data->sound_buffer.sample_count = to_write / sound_info->bytes_per_sample;
+        platform_data->sound_buffer.samples = samples;
 
         // Assumes all events have been handled by user
         platform_data->context->events.clear();
@@ -557,7 +528,7 @@ namespace engine
 
     OSFile os_read_file(const char* file_name)
     {
-        printf("Attempting to read [%s]\n", file_name);
+        printf("[win32] Attempting to read [%s]\n", file_name);
         OSFile file;
 
         void* handle = CreateFileA(file_name, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
