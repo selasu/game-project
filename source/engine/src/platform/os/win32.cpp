@@ -484,6 +484,12 @@ namespace engine
         platform_data = nullptr;
     }
 
+    void* os_get_memory(uint32_t size)
+    {
+        void* memory = VirtualAlloc(0, size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+        return memory;
+    }
+
     uint32_t os_poll_error(void)
     {
         return (uint32_t)GetLastError();

@@ -15,7 +15,7 @@ namespace engine
         uint32_t channel_count;
         uint32_t sample_count;
 
-        int16_t* samples[2];
+        int16_t* samples;
     };
 
     Sound load_wav(const char* file_name);

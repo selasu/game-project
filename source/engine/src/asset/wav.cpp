@@ -66,9 +66,9 @@ namespace engine
             DEV_ASSERT(header->WAVEID == WAVid::wave);
 
             // Data to extract from file
-            uint32_t channels    = 0;
-            uint32_t sample_size = 0;
-            int16_t* data        = nullptr;
+            uint32_t channel_count = 0;
+            uint32_t samples_size  = 0;
+            int16_t* samples       = nullptr;
 
             // 1. Start 1 bit past the header
             // 2. Loop until the end of structure (header + data size - 4 padding)
@@ -85,49 +85,34 @@ namespace engine
                         DEV_ASSERT(fmt->wBitsPerSample == 16);
                         DEV_ASSERT(fmt->nBlockAlign == (sizeof(int16_t)*fmt->nChannels));
 
-                        channels = fmt->nChannels;
+                        channel_count = fmt->nChannels;
                     } break;
 
                     case WAVid::data:
                     {
-                        data        = (int16_t*)(it + sizeof(WAVChunk));
-                        sample_size = ((WAVChunk*)it)->cksize;
+                        samples      = (int16_t*)(it + sizeof(WAVChunk));
+                        samples_size = ((WAVChunk*)it)->cksize;
                     } break;
                 }
             }
 
-            DEV_ASSERT(channels && data);
+            DEV_ASSERT(channel_count && samples);
 
-            sound.channel_count = channels;
-            sound.sample_count = sample_size / (channels * sizeof(int16_t));
+            uint32_t sample_count = samples_size / (channel_count * sizeof(int16_t));
+            sound.sample_count = sample_count;
+            sound.channel_count = channel_count;
+            sound.samples = (int16_t*)os_get_memory(sound.channel_count * sound.sample_count * sizeof(int16_t));
 
-            switch (channels)
+            int16_t* source = samples;
+            int16_t* target = 0;
+            for (uint32_t sindex = 0; sindex < sample_count; ++sindex)
             {
-            case 1:
-            {
-                sound.samples[0] = data;
-                sound.samples[1] = nullptr;
-            } break;
-
-            case 2:
-            {
-                sound.samples[0] = data;
-                sound.samples[1] = data + sound.sample_count;
-
-                for (uint32_t sample_index = 0; sample_index < sound.sample_count; ++sample_index)
+                for (uint32_t cindex = 0; cindex < channel_count; ++cindex)
                 {
-                    auto source = data[2 * sample_index];
-                    data[2 * sample_index] = data[sample_index];
-                    data[sample_index]     = source;
+                    target = sound.samples + (cindex * sound.sample_count);
+                    target[sindex] = *source++;
                 }
-            } break;
-
-            default:
-                DEV_ASSERTM(false, "Invalid channel count in WAV file");
-                break;
             }
-
-            sound.channel_count = 1;
         }
 
         return sound;

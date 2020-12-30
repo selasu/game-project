@@ -33,8 +33,6 @@ int main(int argc, char** argv)
 {
     using namespace engine;
 
-    load_wav("C:/projects/dababy.wav");
-
     Config cfg;
     cfg.title  = "Test";
     cfg.width  = 720;
@@ -73,6 +71,9 @@ int main(int argc, char** argv)
                 break;
         }
     };
+    
+    // NOTE(selina): Temp asset loading for example
+    auto sound = load_wav("C:/projects/dababy.wav");
 
     while (running)
     {

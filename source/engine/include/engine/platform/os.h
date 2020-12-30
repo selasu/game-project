@@ -46,12 +46,14 @@ namespace engine
     void os_update_context(PlatformData* platform_data);
     void os_delete_context(PlatformData* platform_data);
 
+    void* os_get_memory(uint32_t size);
+
     uint32_t os_poll_error(void);
 
-    void os_add_job(Context* cxt, std::function<void(void*)> callback, void* data);
-    void os_flush_queue(Context* cxt);
+    void os_add_job(Context* context, std::function<void(void*)> callback, void* data);
+    void os_flush_queue(Context* context);
 
-    void os_process_events(Context* cxt, std::function<void(Event)> handler);
+    void os_process_events(Context* context, std::function<void(Event)> handler);
 
     OSFile os_read_file(const char* file_name);
     void os_free_file(void* file);
