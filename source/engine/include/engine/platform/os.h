@@ -40,6 +40,8 @@ namespace engine
     {
         SoundBuffer sound_buffer;
         Context*    context;
+
+        float time_elapsed;
     };
 
     PlatformData* os_create_context(Config& cfg);

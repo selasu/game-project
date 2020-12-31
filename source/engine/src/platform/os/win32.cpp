@@ -1,6 +1,7 @@
 #if defined(_WIN32) || defined(_WIN64)
 
 #pragma comment(lib, "opengl32.lib")
+#pragma comment(lib, "winmm.lib")
 
 #include <stdio.h>
 #include <algorithm>
@@ -39,6 +40,7 @@ typedef DIRECT_SOUND_CREATE(DirectSoundCreate_t);
 
 int16_t* samples   = 0;
 float    update_hz = 0.0f;
+int64_t  performance_frequency = 0;
 
 struct Win32WorkQueueJob
 {
@@ -67,7 +69,11 @@ struct Win32SoundInfo
 
     int32_t secondary_buffer_size;
 
+    DWORD safety_bytes;
+
     LPDIRECTSOUNDBUFFER secondary_buffer;
+
+    bool is_valid;
 
     float sine;
 };
@@ -76,6 +82,18 @@ typedef BOOL(__stdcall wglChoosePixelFormatARB_t)(HDC, const int*, const FLOAT*,
 typedef HGLRC(__stdcall wglCreateContextAttribsARB_t)(HDC, HGLRC, const int*);
 
 LRESULT __stdcall win32_callback(HWND handle, UINT msg, WPARAM wparam, LPARAM lparam);
+
+inline LARGE_INTEGER get_time(void)
+{
+    LARGE_INTEGER time;
+    QueryPerformanceCounter(&time);
+    return time;
+}
+
+inline float get_time_elapsed(LARGE_INTEGER start, LARGE_INTEGER end)
+{
+    return (float)(end.QuadPart - start.QuadPart) / (float)performance_frequency;
+}
 
 bool perform_job(Win32WorkQueue* queue)
 {
@@ -188,11 +206,22 @@ namespace engine
 
         Win32WorkQueue queue;
         Win32SoundInfo sound_info;
+
+        LARGE_INTEGER last_counter;
+        float         target_time;
+        bool          granular;
     };
 
     PlatformData* os_create_context(Config& cfg)
     {
         auto context = new Context;
+
+        LARGE_INTEGER pf;
+        QueryPerformanceFrequency(&pf);
+        performance_frequency = pf.QuadPart;
+
+        UINT scheduler = 1;
+        context->granular = (timeBeginPeriod(scheduler) == TIMERR_NOERROR);
 
         Win32WorkQueue queue = {};
         queue.semaphore = CreateSemaphoreEx(0, 0, cfg.thread_count, 0, 0, SEMAPHORE_ALL_ACCESS);
@@ -350,20 +379,20 @@ namespace engine
 
         // Query the refresh rate
         int32_t refresh_rate = 60;
-
-        DEVMODE dev_mode = {};
-        dev_mode.dmSize = sizeof(DEVMODE);
-        if (EnumDisplaySettings(0, ENUM_CURRENT_SETTINGS, &dev_mode))
+        int32_t real_refresh_rate = GetDeviceCaps(context->device_context, VREFRESH);
+        if (real_refresh_rate > 1)
         {
-            refresh_rate = (int32_t)dev_mode.dmDisplayFrequency;
+            refresh_rate = real_refresh_rate;
         }
-
         update_hz = (float)refresh_rate / 2.0f;
+        context->target_time = 1.0f / update_hz;
 
         Win32SoundInfo sound_info = {};
         sound_info.samples_per_second    = cfg.samples_per_second;
         sound_info.bytes_per_sample      = cfg.bytes_per_sample;
         sound_info.secondary_buffer_size = sound_info.samples_per_second * sound_info.bytes_per_sample;
+        sound_info.is_valid              = true;
+        sound_info.safety_bytes          = (int)((float)(sound_info.samples_per_second * sound_info.bytes_per_sample) / update_hz / 3.0f);
         context->sound_info = sound_info;
 
         auto dsound_lib = LoadLibraryA("dsound.dll");
@@ -417,8 +446,13 @@ namespace engine
         samples = (int16_t*)VirtualAlloc(0, context->sound_info.secondary_buffer_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
         auto platform_data = new PlatformData;
+
+        context->last_counter = get_time();
         platform_data->context = context;
-        platform_data->sound_buffer.samples = samples;
+
+        SoundBuffer sound_buffer = {};
+        sound_buffer.samples = samples;
+        platform_data->sound_buffer = sound_buffer;
 
         return platform_data;
     }
@@ -429,15 +463,50 @@ namespace engine
 
         SwapBuffers(platform_data->context->device_context);
 
-        auto sound_info = &platform_data->context->sound_info;
-        DWORD play_cursor, write_cursor, to_lock, to_write;
-        bool sound_is_valid = false;
+        auto context    = platform_data->context;
+        auto sound_info = &context->sound_info;
+
+        LARGE_INTEGER audio_counter = get_time();
+        float time_to_audio         = get_time_elapsed(context->last_counter, audio_counter);
+        
+        DWORD play_cursor, write_cursor;
         if (sound_info->secondary_buffer->GetCurrentPosition(&play_cursor, &write_cursor) == DS_OK)
         {
-            DWORD target_cursor = (play_cursor + (sound_info->samples_per_second / 15 * sound_info->bytes_per_sample)) % sound_info->secondary_buffer_size;
-            
-            to_lock = (sound_info->sample_index * sound_info->bytes_per_sample) % sound_info->secondary_buffer_size;
+            if (!sound_info->is_valid)
+            {
+                sound_info->sample_index = write_cursor / sound_info->bytes_per_sample;
+                sound_info->is_valid = true;
+            }
 
+            DWORD to_lock = (sound_info->sample_index * sound_info->bytes_per_sample) % sound_info->secondary_buffer_size;
+
+            DWORD expected_sound_bytes = (int)((float)(sound_info->samples_per_second * sound_info->bytes_per_sample) / update_hz);
+            float seconds_to_flip      = context->target_time - time_to_audio;
+            DWORD bytes_to_flip        = (DWORD)((seconds_to_flip / context->target_time) * (float)expected_sound_bytes);
+
+            DWORD boundary = play_cursor + bytes_to_flip;
+
+            DWORD safe_write = write_cursor;
+            if (safe_write < play_cursor)
+            {
+                safe_write += sound_info->secondary_buffer_size;
+            }
+            safe_write += sound_info->safety_bytes;
+
+            bool latency = safe_write < boundary;
+            
+            DWORD target_cursor = 0;
+            if (latency)
+            {
+                target_cursor = boundary + expected_sound_bytes;
+            }
+            else
+            {
+                target_cursor = write_cursor + expected_sound_bytes + sound_info->safety_bytes;
+            }
+            target_cursor %= sound_info->secondary_buffer_size;
+
+            DWORD to_write = 0;
             if (to_lock > target_cursor)
             {
                 to_write = sound_info->secondary_buffer_size - to_lock;
@@ -448,18 +517,16 @@ namespace engine
                 to_write = target_cursor - to_lock;
             }
 
-            sound_is_valid = true;
-        }
+            platform_data->sound_buffer.samples_per_second = sound_info->samples_per_second;
+            platform_data->sound_buffer.sample_count = to_write / sound_info->bytes_per_sample;
+            platform_data->sound_buffer.samples = samples;
 
-        if (sound_is_valid)
-        {
             fill_sound_buffer(sound_info, &platform_data->sound_buffer, to_lock, to_write);
         }
-
-        //SoundBuffer sound_buffer = {};
-        platform_data->sound_buffer.samples_per_second = sound_info->samples_per_second;
-        platform_data->sound_buffer.sample_count = to_write / sound_info->bytes_per_sample;
-        platform_data->sound_buffer.samples = samples;
+        else
+        {
+            sound_info->is_valid = false;
+        }
 
         // Assumes all events have been handled by user
         platform_data->context->events.clear();
@@ -469,6 +536,40 @@ namespace engine
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
+
+        LARGE_INTEGER work_time = get_time();
+        float time_elapsed = get_time_elapsed(context->last_counter, work_time);
+
+        if (time_elapsed < context->target_time)
+        {
+            if (context->granular)
+            {
+                DWORD to_sleep = (DWORD)(1000.f * (context->target_time - time_elapsed));
+                if (to_sleep > 0)
+                {
+                    Sleep(to_sleep);
+                }
+            }
+
+            float test_time_elapsed = get_time_elapsed(context->last_counter, get_time());
+            if (test_time_elapsed < context->target_time)
+            {
+                // MISSED SLEEP
+            }
+
+            while (time_elapsed < context->target_time)
+            {
+                time_elapsed = get_time_elapsed(context->last_counter, get_time());
+            }
+        }
+        else
+        {
+            // MISSED FRAME
+        }
+
+        LARGE_INTEGER end_counter = get_time();
+        context->last_counter = end_counter;
+        platform_data->time_elapsed = time_elapsed;
     }
 
     void os_delete_context(PlatformData* platform_data)
