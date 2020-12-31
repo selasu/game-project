@@ -1,4 +1,4 @@
-#include "engine/platform/render/ogl.h"
+#include "ogl.h"
 
 #define DECLARE(glFunction) type_##glFunction func_##glFunction = nullptr
 #define LOAD(glFunction) glFunction = (type_##glFunction)load_function(#glFunction)

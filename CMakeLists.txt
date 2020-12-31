@@ -3,5 +3,4 @@ project(game-project)
 
 set(CMAKE_CXX_STANDARD 17)
 
-add_subdirectory(source/game)
-add_subdirectory(source/engine)
+add_subdirectory(source)

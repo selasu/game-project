@@ -1,7 +1,7 @@
-#include "engine/asset/wav.h"
+#include "wav.h"
 
-#include "engine/platform/os.h"
-#include "engine/util/assert.h"
+#include "../platform/os.h"
+#include "../util/assert.h"
 
 #pragma pack(push, 1)
 
