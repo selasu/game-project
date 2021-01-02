@@ -38,12 +38,12 @@
         #define DEV_DASSERT(expr) DEV_ASSERT(expr)
         #define DEV_DASSERTM(expr, msg) DEV_ASSERTM(expr, msg)
     #else
-        #define DEV_DASSERT(expr)
-        #define DEV_DASSERTM(expr, msg)
+        #define DEV_DASSERT(expr) {}
+        #define DEV_DASSERTM(expr, msg) {}
     #endif
 #else
-    #define DEV_ASSERT(expr)
-    #define DEV_ASSERTM(expr, msg)
-    #define DEV_DASSERT(expr)
-    #define DEV_DASSERTM(expr, msg)
+    #define DEV_ASSERT(expr) {}
+    #define DEV_ASSERTM(expr, msg) {}
+    #define DEV_DASSERT(expr) {}
+    #define DEV_DASSERTM(expr, msg) {}
 #endif

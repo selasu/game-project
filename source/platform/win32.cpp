@@ -8,9 +8,9 @@
 #include <windows.h>
 #include <dsound.h>
 
-#include "../os.h"
-#include "../render/ogl.h"
-#include "../../util/assert.h"
+#include "render/ogl.h"
+#include "../util/assert.h"
+#include "../game.h"
 
 // See https://www.opengl.org/registry/specs/ARB/wgl_create_context.txt for all values
 #define WGL_CONTEXT_MAJOR_VERSION_ARB    0x2091
@@ -69,23 +69,25 @@ struct Win32SoundInfo
     int32_t samples_per_second;
     int32_t bytes_per_sample;
 
-    int32_t secondary_buffer_size;
+    int32_t buffer_size;
 
     DWORD safety_bytes;
 
-    LPDIRECTSOUNDBUFFER secondary_buffer;
+    LPDIRECTSOUNDBUFFER buffer;
 
     bool is_valid;
 
     float sine;
 };
 
-struct Win32SoundBuffer
+struct Win32GameCode
 {
-    int32_t samples_per_second;
-    int32_t sample_count;
+    HMODULE game_dll;
 
-    int16_t* samples;
+    game_get_sound_samples_t* get_sound_samples;
+    game_update_and_render_t* update_and_render;
+
+    bool is_valid;
 };
 
 typedef BOOL(__stdcall wglChoosePixelFormatARB_t)(HDC, const int*, const FLOAT*, UINT, int*, UINT*);
@@ -172,7 +174,7 @@ void win32_clear_sound_buffer(Win32SoundInfo* sound_output)
     void *region1, *region2;
     DWORD region1_size, region2_size;
 
-    if (SUCCEEDED(sound_output->secondary_buffer->Lock(0, sound_output->secondary_buffer_size, &region1, &region1_size, &region2, &region2_size, 0)))
+    if (SUCCEEDED(sound_output->buffer->Lock(0, sound_output->buffer_size, &region1, &region1_size, &region2, &region2_size, 0)))
     {
         uint8_t* output = (uint8_t*)region1;
         for (DWORD _ = 0; _ < region1_size; ++_)
@@ -186,16 +188,16 @@ void win32_clear_sound_buffer(Win32SoundInfo* sound_output)
             *output++ = 0;
         }
 
-        sound_output->secondary_buffer->Unlock(region1, region1_size, region2, region2_size);
+        sound_output->buffer->Unlock(region1, region1_size, region2, region2_size);
     }
 }
 
-void win32_fill_sound_buffer(Win32SoundInfo* sound_output, Win32SoundBuffer* sound_input, DWORD to_lock, DWORD to_write)
+void win32_fill_sound_buffer(Win32SoundInfo* sound_output, SoundBuffer* sound_input, DWORD to_lock, DWORD to_write)
 {
     void *region1, *region2;
     DWORD region1_size, region2_size;
 
-    if (SUCCEEDED(sound_output->secondary_buffer->Lock(to_lock, to_write, &region1, &region1_size, &region2, &region2_size, 0)))
+    if (SUCCEEDED(sound_output->buffer->Lock(to_lock, to_write, &region1, &region1_size, &region2, &region2_size, 0)))
     {
         int16_t* source = sound_input->samples;
 
@@ -215,14 +217,91 @@ void win32_fill_sound_buffer(Win32SoundInfo* sound_output, Win32SoundBuffer* sou
             ++sound_output->sample_index;
         }
 
-        sound_output->secondary_buffer->Unlock(region1, region1_size, region2, region2_size);
+        sound_output->buffer->Unlock(region1, region1_size, region2, region2_size);
     }
 }
 
 #define THREAD_COUNT 8
+#define MAX_PATH_LENGTH 512
+
+Win32GameCode win32_load_game(char* source, char* temp, char* lock)
+{
+    Win32GameCode code = {};
+
+    WIN32_FILE_ATTRIBUTE_DATA ignored;
+    if (!GetFileAttributesExA(lock, GetFileExInfoStandard, &ignored))
+    {
+        CopyFileA(source, temp, FALSE);
+
+        code.game_dll = LoadLibraryA(temp);
+        if (code.game_dll)
+        {
+            code.get_sound_samples = (game_get_sound_samples_t*)GetProcAddress(code.game_dll, "game_get_sound_samples");
+            code.update_and_render = (game_update_and_render_t*)GetProcAddress(code.game_dll, "game_update_and_render");
+
+            code.is_valid = code.get_sound_samples && code.update_and_render;
+        }
+        else
+        {
+            printf("[win32] Couldn't load library %u\n", GetLastError());
+        }
+    }
+
+    if (!code.is_valid)
+    {
+        code.get_sound_samples = 0;
+        code.update_and_render = 0;
+        printf("[win32] Couldn't load code %u\n", GetLastError());
+    }
+
+    return code;
+}
+
+void win32_unload_game(Win32GameCode* code)
+{
+    if (code->game_dll)
+    {
+        FreeLibrary(code->game_dll);
+        code->game_dll = 0;
+    }
+
+    code->is_valid = false;
+    code->get_sound_samples = 0;
+}
+
+void cat_strings(size_t a_size, char* a, size_t b_size, char* b, size_t dest_count, char* dest)
+{
+    for (int cindex = 0; cindex < a_size; ++cindex) *dest++ = *a++;
+    for (int cindex = 0; cindex < b_size; ++cindex) *dest++ = *b++;
+    *dest++ = 0;
+}
+
+int32_t str_length(char* s)
+{
+    int32_t count = 0;
+    while (*s++) ++count;
+    return count;
+}
 
 int main(int argc, char* argv[])
 {
+    char exe_path[MAX_PATH_LENGTH];
+    GetModuleFileNameA(0, exe_path, sizeof(exe_path));
+    char* exe_name = exe_path;
+    for (char* c = exe_path; *c; ++c)
+    {
+        if (*c == '\\') exe_name = c + 1;
+    }
+
+    char game_file_path[MAX_PATH_LENGTH];
+    cat_strings(exe_name - exe_path, exe_path, str_length("game.dll"), "game.dll", sizeof(game_file_path), game_file_path);
+
+    char temp_game_file_path[MAX_PATH_LENGTH];
+    cat_strings(exe_name - exe_path, exe_path, str_length("game_temp.dll"), "game_temp.dll", sizeof(temp_game_file_path), temp_game_file_path);
+
+    char lock_file_path[MAX_PATH_LENGTH];
+    cat_strings(exe_name - exe_path, exe_path, str_length("lock.tmp"), "lock.tmp", sizeof(lock_file_path), lock_file_path);
+
     LARGE_INTEGER pf;
     QueryPerformanceFrequency(&pf);
     performance_frequency = pf.QuadPart;
@@ -367,7 +446,7 @@ int main(int argc, char* argv[])
     Win32SoundInfo sound_info = {};
     sound_info.samples_per_second    = 48000;
     sound_info.bytes_per_sample      = 2 * sizeof(int16_t);
-    sound_info.secondary_buffer_size = sound_info.samples_per_second * sound_info.bytes_per_sample;
+    sound_info.buffer_size = sound_info.samples_per_second * sound_info.bytes_per_sample;
     sound_info.is_valid              = true;
     sound_info.safety_bytes          = (int)((float)(sound_info.samples_per_second * sound_info.bytes_per_sample) / update_hz / 3.0f);
 
@@ -406,10 +485,10 @@ int main(int argc, char* argv[])
             DSBUFFERDESC buffer_desc = {};
             buffer_desc.dwSize        = sizeof(DSBUFFERDESC);
             buffer_desc.dwFlags       = DSBCAPS_GETCURRENTPOSITION2;
-            buffer_desc.dwBufferBytes = sound_info.secondary_buffer_size;
+            buffer_desc.dwBufferBytes = sound_info.buffer_size;
             buffer_desc.lpwfxFormat   = &wave_format;
 
-            if (SUCCEEDED(dsound->CreateSoundBuffer(&buffer_desc, &sound_info.secondary_buffer, 0)))
+            if (SUCCEEDED(dsound->CreateSoundBuffer(&buffer_desc, &sound_info.buffer, 0)))
             {
                 printf("[win32] Created Secondary Buffer\n");
             }
@@ -417,11 +496,14 @@ int main(int argc, char* argv[])
     }
 
     win32_clear_sound_buffer(&sound_info);
-    sound_info.secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
-
-    samples = (int16_t*)VirtualAlloc(0, sound_info.secondary_buffer_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    sound_info.buffer->Play(0, 0, DSBPLAY_LOOPING);
+    samples = (int16_t*)VirtualAlloc(0, sound_info.buffer_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
     LARGE_INTEGER last_counter = get_time();
+
+    Win32GameCode game = win32_load_game(game_file_path, temp_game_file_path, lock_file_path);
+    printf("[win32] Game code loaded: %d\n", game.update_and_render &&game.get_sound_samples);
+
     while (running)
     {
         LARGE_INTEGER audio_counter = get_time();
@@ -435,7 +517,7 @@ int main(int argc, char* argv[])
         }
         
         DWORD play_cursor, write_cursor;
-        if (sound_info.secondary_buffer->GetCurrentPosition(&play_cursor, &write_cursor) == DS_OK)
+        if (sound_info.buffer->GetCurrentPosition(&play_cursor, &write_cursor) == DS_OK)
         {
             if (!sound_info.is_valid)
             {
@@ -443,7 +525,7 @@ int main(int argc, char* argv[])
                 sound_info.is_valid = true;
             }
 
-            DWORD to_lock = (sound_info.sample_index * sound_info.bytes_per_sample) % sound_info.secondary_buffer_size;
+            DWORD to_lock = (sound_info.sample_index * sound_info.bytes_per_sample) % sound_info.buffer_size;
 
             DWORD expected_sound_bytes = (int)((float)(sound_info.samples_per_second * sound_info.bytes_per_sample) / update_hz);
             float seconds_to_flip      = target_time - time_to_audio;
@@ -454,7 +536,7 @@ int main(int argc, char* argv[])
             DWORD safe_write = write_cursor;
             if (safe_write < play_cursor)
             {
-                safe_write += sound_info.secondary_buffer_size;
+                safe_write += sound_info.buffer_size;
             }
             safe_write += sound_info.safety_bytes;
 
@@ -469,12 +551,12 @@ int main(int argc, char* argv[])
             {
                 target_cursor = write_cursor + expected_sound_bytes + sound_info.safety_bytes;
             }
-            target_cursor %= sound_info.secondary_buffer_size;
+            target_cursor %= sound_info.buffer_size;
 
             DWORD to_write = 0;
             if (to_lock > target_cursor)
             {
-                to_write = sound_info.secondary_buffer_size - to_lock;
+                to_write = sound_info.buffer_size - to_lock;
                 to_write += target_cursor;
             }
             else
@@ -482,10 +564,15 @@ int main(int argc, char* argv[])
                 to_write = target_cursor - to_lock;
             }
 
-            Win32SoundBuffer sound_buffer = {};
+            SoundBuffer sound_buffer = {};
             sound_buffer.samples_per_second = sound_info.samples_per_second;
             sound_buffer.sample_count = to_write / sound_info.bytes_per_sample;
             sound_buffer.samples = samples;
+
+            if (game.get_sound_samples)
+            {
+                game.get_sound_samples(&sound_buffer);
+            }
 
             win32_fill_sound_buffer(&sound_info, &sound_buffer, to_lock, to_write);
         }
@@ -496,7 +583,7 @@ int main(int argc, char* argv[])
         
         SwapBuffers(device_context);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glClearColor(0.8, 0.0, 0.8, 1.0);
+        glClearColor(0.8f, 0.0f, 0.8f, 1.0f);
 
         LARGE_INTEGER work_time = get_time();
         float time_elapsed = get_time_elapsed(last_counter, work_time);
@@ -729,7 +816,7 @@ namespace engine
         Win32SoundInfo sound_info = {};
         sound_info.samples_per_second    = cfg.samples_per_second;
         sound_info.bytes_per_sample      = cfg.bytes_per_sample;
-        sound_info.secondary_buffer_size = sound_info.samples_per_second * sound_info.bytes_per_sample;
+        sound_info.buffer_size = sound_info.samples_per_second * sound_info.bytes_per_sample;
         sound_info.is_valid              = true;
         sound_info.safety_bytes          = (int)((float)(sound_info.samples_per_second * sound_info.bytes_per_sample) / update_hz / 3.0f);
         context->sound_info = sound_info;
@@ -769,10 +856,10 @@ namespace engine
                 DSBUFFERDESC buffer_desc = {};
                 buffer_desc.dwSize        = sizeof(DSBUFFERDESC);
                 buffer_desc.dwFlags       = DSBCAPS_GETCURRENTPOSITION2;
-                buffer_desc.dwBufferBytes = sound_info.secondary_buffer_size;
+                buffer_desc.dwBufferBytes = sound_info.buffer_size;
                 buffer_desc.lpwfxFormat   = &wave_format;
 
-                if (SUCCEEDED(dsound->CreateSoundBuffer(&buffer_desc, &context->sound_info.secondary_buffer, 0)))
+                if (SUCCEEDED(dsound->CreateSoundBuffer(&buffer_desc, &context->sound_info.buffer, 0)))
                 {
                     printf("[win32] Created Secondary Buffer\n");
                 }
@@ -780,9 +867,9 @@ namespace engine
         }
 
         clear_sound_buffer(&context->sound_info);
-        context->sound_info.secondary_buffer->Play(0, 0, DSBPLAY_LOOPING);
+        context->sound_info.buffer->Play(0, 0, DSBPLAY_LOOPING);
 
-        samples = (int16_t*)VirtualAlloc(0, context->sound_info.secondary_buffer_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+        samples = (int16_t*)VirtualAlloc(0, context->sound_info.buffer_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
         auto platform_data = new PlatformData;
 
