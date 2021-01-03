@@ -1,5 +1,11 @@
 #include <stdint.h>
 
+static char* game_functions[] =
+{
+    "game_update_and_render",
+    "game_get_sound_samples"
+};
+
 struct SoundBuffer
 {
     int32_t samples_per_second;
@@ -8,7 +14,7 @@ struct SoundBuffer
     int16_t* samples;
 };
 
-#define GAME_UPDATE_AND_RENDER(name) void name(int a)
+#define GAME_UPDATE_AND_RENDER(name) void name()
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render_t);
 
 #define GAME_GET_SOUND_SAMPLES(name) void name(SoundBuffer* sound_buffer)

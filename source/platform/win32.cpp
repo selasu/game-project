@@ -1,46 +1,32 @@
 #if defined(_WIN32) || defined(_WIN64)
 
-#pragma comment(lib, "opengl32.lib")
 #pragma comment(lib, "winmm.lib")
 
+#include <functional>
 #include <stdio.h>
-#include <algorithm>
 #include <windows.h>
 #include <dsound.h>
 
-#include "render/ogl.h"
 #include "../util/assert.h"
 #include "../game.h"
 
-// See https://www.opengl.org/registry/specs/ARB/wgl_create_context.txt for all values
-#define WGL_CONTEXT_MAJOR_VERSION_ARB    0x2091
-#define WGL_CONTEXT_MINOR_VERSION_ARB    0x2092
-#define WGL_CONTEXT_PROFILE_MASK_ARB     0x9126
-#define WGL_CONTEXT_CORE_PROFILE_BIT_ARB 0x00000001
-
-// See https://www.opengl.org/registry/specs/ARB/wgl_pixel_format.txt for all values
-#define WGL_DRAW_TO_WINDOW_ARB 0x2001
-#define WGL_ACCELERATION_ARB   0x2003
-#define WGL_SUPPORT_OPENGL_ARB 0x2010
-#define WGL_DOUBLE_BUFFER_ARB  0x2011
-#define WGL_PIXEL_TYPE_ARB     0x2013
-#define WGL_COLOR_BITS_ARB     0x2014
-#define WGL_DEPTH_BITS_ARB     0x2022
-#define WGL_STENCIL_BITS_ARB   0x2023
-
-#define WGL_FULL_ACCELERATION_ARB 0x2027
-#define WGL_TYPE_RGBA_ARB         0x202B
+#include "render/win32_render.h"
 
 #define QUEUE_SIZE 128
+#define THREAD_COUNT 8
+#define MAX_PATH_LENGTH 512
 
+// TODO(selina): Put this in another file
 #define array_count(arr) ((sizeof(arr) / sizeof((arr)[0])))
+#define zero_array(size, ptr) zero_size((size) * sizeof((ptr)[0]), (ptr))
+void zero_size(size_t size, void* ptr)
+{
+    uint8_t* byte = (uint8_t*)ptr;
+    while (--size) *byte++ = 0;
+}
 
 #define DIRECT_SOUND_CREATE(name) HRESULT __stdcall name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter)
 typedef DIRECT_SOUND_CREATE(DirectSoundCreate_t);
-
-int16_t* samples   = 0;
-float    update_hz = 0.0f;
-int64_t  performance_frequency = 0;
 
 static bool running = true;
 
@@ -82,32 +68,40 @@ struct Win32SoundInfo
 
 struct Win32GameCode
 {
-    HMODULE game_dll;
-
-    game_get_sound_samples_t* get_sound_samples;
     game_update_and_render_t* update_and_render;
+    game_get_sound_samples_t* get_sound_samples;
+};
+
+struct Win32Code
+{
+    HMODULE dll;
+
+    char* dll_path;
+    char* temp_path;
+    char* lock_path;
+
+    uint32_t function_count;
+    char** function_names;
+    void** functions;
 
     bool is_valid;
 };
 
-typedef BOOL(__stdcall wglChoosePixelFormatARB_t)(HDC, const int*, const FLOAT*, UINT, int*, UINT*);
-typedef HGLRC(__stdcall wglCreateContextAttribsARB_t)(HDC, HGLRC, const int*);
-
 LRESULT __stdcall win32_callback(HWND handle, UINT msg, WPARAM wparam, LPARAM lparam);
 
-inline LARGE_INTEGER get_time(void)
+inline LARGE_INTEGER win32_get_time(void)
 {
     LARGE_INTEGER time;
     QueryPerformanceCounter(&time);
     return time;
 }
 
-inline float get_time_elapsed(LARGE_INTEGER start, LARGE_INTEGER end)
+inline float win32_get_time_elapsed(LARGE_INTEGER start, LARGE_INTEGER end, float performance_frequency)
 {
-    return (float)(end.QuadPart - start.QuadPart) / (float)performance_frequency;
+    return (float)(end.QuadPart - start.QuadPart) / performance_frequency;
 }
 
-bool perform_job(Win32WorkQueue* queue)
+bool win32_perform_job(Win32WorkQueue* queue)
 {
     bool sleep = true;
 
@@ -140,18 +134,12 @@ unsigned long __stdcall win32_thread_proc(void* param)
 
     while (1)
     {
-        if (perform_job(queue))
+        if (win32_perform_job(queue))
         {
             // If the read index matches write index, wait for semaphore to free
             WaitForSingleObjectEx(queue->semaphore, INFINITE, 0);
         }
     }
-}
-
-void test_job(void* data)
-{
-    Sleep(1500);
-    printf("[win32] Thread #%u: %s\n", GetCurrentThreadId(), (char*)data);
 }
 
 void win32_add_job(Win32WorkQueue* queue, std::function<void(void*)> callback, void* data)
@@ -221,52 +209,49 @@ void win32_fill_sound_buffer(Win32SoundInfo* sound_output, SoundBuffer* sound_in
     }
 }
 
-#define THREAD_COUNT 8
-#define MAX_PATH_LENGTH 512
-
-Win32GameCode win32_load_game(char* source, char* temp, char* lock)
+void win32_unload_code(Win32Code* code)
 {
-    Win32GameCode code = {};
-
-    WIN32_FILE_ATTRIBUTE_DATA ignored;
-    if (!GetFileAttributesExA(lock, GetFileExInfoStandard, &ignored))
+    if (code->dll)
     {
-        CopyFileA(source, temp, FALSE);
-
-        code.game_dll = LoadLibraryA(temp);
-        if (code.game_dll)
-        {
-            code.get_sound_samples = (game_get_sound_samples_t*)GetProcAddress(code.game_dll, "game_get_sound_samples");
-            code.update_and_render = (game_update_and_render_t*)GetProcAddress(code.game_dll, "game_update_and_render");
-
-            code.is_valid = code.get_sound_samples && code.update_and_render;
-        }
-        else
-        {
-            printf("[win32] Couldn't load library %u\n", GetLastError());
-        }
-    }
-
-    if (!code.is_valid)
-    {
-        code.get_sound_samples = 0;
-        code.update_and_render = 0;
-        printf("[win32] Couldn't load code %u\n", GetLastError());
-    }
-
-    return code;
-}
-
-void win32_unload_game(Win32GameCode* code)
-{
-    if (code->game_dll)
-    {
-        FreeLibrary(code->game_dll);
-        code->game_dll = 0;
+        FreeLibrary(code->dll);
+        code->dll = 0;
     }
 
     code->is_valid = false;
-    code->get_sound_samples = 0;
+    zero_array(code->function_count, code->functions);
+}
+
+void win32_load_code(Win32Code* code)
+{
+    WIN32_FILE_ATTRIBUTE_DATA ignored;
+    if (!GetFileAttributesExA(code->lock_path, GetFileExInfoStandard, &ignored))
+    {
+        CopyFileA(code->dll_path, code->temp_path, FALSE);
+
+        code->dll = LoadLibraryA(code->temp_path);
+        if (code->dll)
+        {
+            code->is_valid = true;
+
+            for (uint32_t findex = 0; findex < code->function_count && code->is_valid; ++findex)
+            {
+                void* f = GetProcAddress(code->dll, code->function_names[findex]);
+                if (f)
+                {
+                    code->functions[findex] = f;
+                }
+                else
+                {
+                    code->is_valid = false;
+                }
+            }
+        }
+    }
+
+    if (!code->is_valid)
+    {
+        win32_unload_code(code);
+    }
 }
 
 void cat_strings(size_t a_size, char* a, size_t b_size, char* b, size_t dest_count, char* dest)
@@ -293,18 +278,24 @@ int main(int argc, char* argv[])
         if (*c == '\\') exe_name = c + 1;
     }
 
-    char game_file_path[MAX_PATH_LENGTH];
-    cat_strings(exe_name - exe_path, exe_path, str_length("game.dll"), "game.dll", sizeof(game_file_path), game_file_path);
+    char game_file[MAX_PATH_LENGTH];
+    cat_strings(exe_name - exe_path, exe_path, str_length("sel_game.dll"), "sel_game.dll", sizeof(game_file), game_file);
 
-    char temp_game_file_path[MAX_PATH_LENGTH];
-    cat_strings(exe_name - exe_path, exe_path, str_length("game_temp.dll"), "game_temp.dll", sizeof(temp_game_file_path), temp_game_file_path);
+    char tgame_file[MAX_PATH_LENGTH];
+    cat_strings(exe_name - exe_path, exe_path, str_length("sel_game_temp.dll"), "sel_game_temp.dll", sizeof(tgame_file), tgame_file);
 
-    char lock_file_path[MAX_PATH_LENGTH];
-    cat_strings(exe_name - exe_path, exe_path, str_length("lock.tmp"), "lock.tmp", sizeof(lock_file_path), lock_file_path);
+    char ogl_file[MAX_PATH_LENGTH];
+    cat_strings(exe_name - exe_path, exe_path, str_length("sel_opengl.dll"), "sel_opengl.dll", sizeof(ogl_file), ogl_file);
+
+    char togl_file[MAX_PATH_LENGTH];
+    cat_strings(exe_name - exe_path, exe_path, str_length("sel_opengl_temp.dll"), "sel_opengl_temp.dll", sizeof(togl_file), togl_file);
+
+    char lock_file[MAX_PATH_LENGTH];
+    cat_strings(exe_name - exe_path, exe_path, str_length("lock.tmp"), "lock.tmp", sizeof(lock_file), lock_file);
 
     LARGE_INTEGER pf;
     QueryPerformanceFrequency(&pf);
-    performance_frequency = pf.QuadPart;
+    float performance_frequency = pf.QuadPart;
 
     bool granular = timeBeginPeriod(1) == TIMERR_NOERROR;
 
@@ -318,54 +309,15 @@ int main(int argc, char* argv[])
         CloseHandle(handle);
     }
 
-    win32_add_job(&queue, test_job, "In os_create_context 1");
-    win32_add_job(&queue, test_job, "In os_create_context 2");
-    win32_add_job(&queue, test_job, "In os_create_context 3");
-    win32_add_job(&queue, test_job, "In os_create_context 4");
-    win32_add_job(&queue, test_job, "In os_create_context 5");
-
-    wglChoosePixelFormatARB_t* wglChoosePixelFormatARB = nullptr;
-    wglCreateContextAttribsARB_t* wglCreateContextAttribsARB = nullptr;
-
-    // Create a temporary window so that we can load the functions wglChoosePixelFormatARB and
-    // wglCreateContextAttribsARB, which are needed to create a full OpenGL context
-    // More info. here: https://www.khronos.org/opengl/wiki/Creating_an_OpenGL_Context_(WGL)
-    {
-        WNDCLASSEXA wc = {0};
-        wc.cbSize        = sizeof(WNDCLASSEX);
-        wc.lpfnWndProc   = DefWindowProc;
-        wc.lpszClassName = "SelengineWGLLoader";
-        wc.hInstance     = GetModuleHandle(0);
-        if (!RegisterClassExA(&wc)) DEV_ASSERT(false)
-
-        auto handle = CreateWindowExA(0, wc.lpszClassName, wc.lpszClassName, 0, 0, 0, 0, 0, 0, 0, wc.hInstance, 0);
-        if (!handle) DEV_ASSERT(false)
-        auto dc = GetDC(handle);
-
-        PIXELFORMATDESCRIPTOR pfd;
-        pfd.nSize        = sizeof(PIXELFORMATDESCRIPTOR);
-        pfd.nVersion     = 1;
-        pfd.dwFlags      = PFD_DRAW_TO_WINDOW | LPD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER;
-        pfd.iPixelType   = PFD_TYPE_RGBA;
-        pfd.cColorBits   = 32;
-        pfd.cDepthBits   = 24;
-        pfd.cStencilBits = 8;
-        pfd.iLayerType   = PFD_MAIN_PLANE;
-
-        auto format = ChoosePixelFormat(dc, &pfd);
-        if (!format || !SetPixelFormat(dc, format, &pfd)) DEV_ASSERT(false)
-
-        auto hglrc = wglCreateContext(dc);
-        if (!hglrc || !wglMakeCurrent(dc, hglrc)) DEV_ASSERT(false)
-
-        wglChoosePixelFormatARB = (wglChoosePixelFormatARB_t*)wglGetProcAddress("wglChoosePixelFormatARB");
-        wglCreateContextAttribsARB = (wglCreateContextAttribsARB_t*)wglGetProcAddress("wglCreateContextAttribsARB");
-
-        wglMakeCurrent(dc, 0);
-        wglDeleteContext(hglrc);
-        ReleaseDC(handle, dc);
-        DestroyWindow(handle);
-    }
+    auto test_job = [](void* data) {    
+        Sleep(1500);
+        printf("[win32] Thread #%u: %s\n", GetCurrentThreadId(), (char*)data);
+    };
+    win32_add_job(&queue, test_job, "Test #1");
+    win32_add_job(&queue, test_job, "Test #2");
+    win32_add_job(&queue, test_job, "Test #3");
+    win32_add_job(&queue, test_job, "Test #4");
+    win32_add_job(&queue, test_job, "Test #5");
 
     // Create our normal window now that we have the appropriate WGL functions
 
@@ -383,66 +335,49 @@ int main(int argc, char* argv[])
     if (!handle) DEV_ASSERT(false)
     auto device_context = GetDC(handle);
 
-    // Create a proper OpenGL context
-    // More info. here: https://www.khronos.org/opengl/wiki/Creating_an_OpenGL_Context_(WGL)
+    // NOTE(selina): Load game game_code
+    Win32GameCode game  = {};
+    Win32Code game_code = {};
 
-    int format_attr[] = {
-        WGL_DRAW_TO_WINDOW_ARB, GL_TRUE,
-        WGL_SUPPORT_OPENGL_ARB, GL_TRUE,
-        WGL_DOUBLE_BUFFER_ARB,  GL_TRUE,
-        WGL_ACCELERATION_ARB,   WGL_FULL_ACCELERATION_ARB,
-        WGL_PIXEL_TYPE_ARB,     WGL_TYPE_RGBA_ARB,
-        WGL_COLOR_BITS_ARB,     32,
-        WGL_DEPTH_BITS_ARB,     24,
-        WGL_STENCIL_BITS_ARB,   8,
-        0
-    };
+    game_code.dll_path  = game_file;
+    game_code.temp_path = tgame_file;
+    game_code.lock_path = lock_file;
+    
+    game_code.function_count = array_count(game_functions);
+    game_code.function_names = game_functions;
+    game_code.functions      = (void**)&game;
 
-    int format;
-    unsigned int formatc;
-    wglChoosePixelFormatARB(device_context, format_attr, 0, 1, &format, &formatc);
-    if (!formatc) DEV_ASSERT(false)
+    win32_load_code(&game_code);
 
-    PIXELFORMATDESCRIPTOR pfd;
-    DescribePixelFormat(device_context, format, sizeof(pfd), &pfd);
-    if (!SetPixelFormat(device_context, format, &pfd)) {}
+    // NOTE(selina): Load renderer code
+    Win32RenderCode renderer = {};
+    Win32Code renderer_code  = {};
 
-    int ogl_attr[] = {
-        WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
-        WGL_CONTEXT_MINOR_VERSION_ARB, 3,
-        WGL_CONTEXT_PROFILE_MASK_ARB,  WGL_CONTEXT_CORE_PROFILE_BIT_ARB,
-        0,
-    };
+    renderer_code.dll_path  = ogl_file;
+    renderer_code.temp_path = togl_file;
+    renderer_code.lock_path = lock_file;
 
-    auto hglrc = wglCreateContextAttribsARB(device_context, 0, ogl_attr);
-    if (!hglrc || !wglMakeCurrent(device_context, hglrc)) DEV_ASSERT(false)
+    renderer_code.function_count = array_count(win32_render_functions);
+    renderer_code.function_names = win32_render_functions;
+    renderer_code.functions      = (void**)&renderer;
 
-    // Load OpenGL functions
+    win32_load_code(&renderer_code);
 
-    auto mod = LoadLibraryA("opengl32.dll");
-    auto load_function = [&mod](const char* proc_name) {
-        auto f = wglGetProcAddress(proc_name);
-        if (!f || f == (void*)0x1 || f == (void*)0x2 || f == (void*)0x3 || f == (void*)-1)
-        {
-            f = GetProcAddress(mod, proc_name);
-        }
-        return f;
-    };
-    auto res = load_opengl_functions(load_function);
-    FreeLibrary(mod);
+    DEV_ASSERT(game_code.is_valid && renderer_code.is_valid)
 
-    if (!res) DEV_ASSERT(false)
+    renderer.win32_load_renderer(GetDC(handle));
 
-    // Query the refresh rate
+    // NOTE(selina): Query refresh rate
     int32_t refresh_rate = 60;
     int32_t real_refresh_rate = GetDeviceCaps(device_context, VREFRESH);
     if (real_refresh_rate > 1)
     {
         refresh_rate = real_refresh_rate;
     }
-    update_hz = (float)refresh_rate / 2.0f;
+    float update_hz = (float)refresh_rate / 2.0f;
     auto target_time = 1.0f / update_hz;
 
+    // NOTE(selina): Load audio engine
     Win32SoundInfo sound_info = {};
     sound_info.samples_per_second    = 48000;
     sound_info.bytes_per_sample      = 2 * sizeof(int16_t);
@@ -497,25 +432,30 @@ int main(int argc, char* argv[])
 
     win32_clear_sound_buffer(&sound_info);
     sound_info.buffer->Play(0, 0, DSBPLAY_LOOPING);
-    samples = (int16_t*)VirtualAlloc(0, sound_info.buffer_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
+    int16_t* samples = (int16_t*)VirtualAlloc(0, sound_info.buffer_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
-    LARGE_INTEGER last_counter = get_time();
-
-    Win32GameCode game = win32_load_game(game_file_path, temp_game_file_path, lock_file_path);
-    printf("[win32] Game code loaded: %d\n", game.update_and_render &&game.get_sound_samples);
+    LARGE_INTEGER last_counter = win32_get_time();
 
     while (running)
     {
-        LARGE_INTEGER audio_counter = get_time();
-        float time_to_audio         = get_time_elapsed(last_counter, audio_counter);
+        LARGE_INTEGER audio_counter = win32_get_time();
+        float time_to_audio         = win32_get_time_elapsed(last_counter, audio_counter, performance_frequency);
         
+        // NOTE(selina): Process system messages
         MSG msg = {};
         while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
         {
             TranslateMessage(&msg);
             DispatchMessage(&msg);
         }
+
+        // NOTE(selina): Run game for frame
+        if (game.update_and_render)
+        {
+            game.update_and_render();
+        }
         
+        // NOTE(selina): Play audio
         DWORD play_cursor, write_cursor;
         if (sound_info.buffer->GetCurrentPosition(&play_cursor, &write_cursor) == DS_OK)
         {
@@ -581,13 +521,12 @@ int main(int argc, char* argv[])
             sound_info.is_valid = false;
         }
         
-        SwapBuffers(device_context);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-        glClearColor(0.8f, 0.0f, 0.8f, 1.0f);
+        // NOTE(selina): Display frame
+        renderer.win32_end_frame();
 
-        LARGE_INTEGER work_time = get_time();
-        float time_elapsed = get_time_elapsed(last_counter, work_time);
-
+        // NOTE(selina): Handle timing
+        LARGE_INTEGER work_time = win32_get_time();
+        float time_elapsed = win32_get_time_elapsed(last_counter, work_time, performance_frequency);
         if (time_elapsed < target_time)
         {
             if (granular)
@@ -599,7 +538,7 @@ int main(int argc, char* argv[])
                 }
             }
 
-            float test_time_elapsed = get_time_elapsed(last_counter, get_time());
+            float test_time_elapsed = win32_get_time_elapsed(last_counter, win32_get_time(), performance_frequency);
             if (test_time_elapsed < target_time)
             {
                 // MISSED SLEEP
@@ -607,7 +546,7 @@ int main(int argc, char* argv[])
 
             while (time_elapsed < target_time)
             {
-                time_elapsed = get_time_elapsed(last_counter, get_time());
+                time_elapsed = win32_get_time_elapsed(last_counter, win32_get_time(), performance_frequency);
             }
         }
         else
@@ -873,7 +812,7 @@ namespace engine
 
         auto platform_data = new PlatformData;
 
-        context->last_counter = get_time();
+        context->last_counter = win32_get_time();
         platform_data->context = context;
 
         SoundBuffer sound_buffer = {};
@@ -928,7 +867,7 @@ namespace engine
         auto queue = &context->queue;
         while (queue->completed < queue->to_complete)
         {
-            perform_job(queue);
+            win32_perform_job(queue);
         }
 
         queue->completed   = 0;

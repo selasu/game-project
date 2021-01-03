@@ -1,11 +1,15 @@
 cmake_minimum_required(VERSION 3.5)
 project(game-project VERSION 1.0.0 LANGUAGES CXX)
 
-add_library(game SHARED
+add_library(sel_opengl SHARED
+    platform/render/win32_ogl.cpp
+)
+
+add_library(sel_game SHARED
     game.cpp
 )
 
-target_compile_definitions(game
+target_compile_definitions(sel_game
     PUBLIC 
         ASSERTIONS_ON
     PRIVATE
@@ -14,7 +18,11 @@ target_compile_definitions(game
 
 add_executable(main
     platform/win32.cpp
-    platform/render/ogl.cpp
 )
 
-target_compile_definitions(main PRIVATE cxx_std_17)
+target_compile_definitions(main 
+    PUBLIC
+        ASSERTIONS_ON
+    PRIVATE 
+        cxx_std_17
+)

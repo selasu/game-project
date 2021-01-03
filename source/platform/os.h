@@ -3,13 +3,7 @@
 #include <functional>
 #include <stdint.h>
 
-struct SoundBuffer
-{
-    int32_t samples_per_second;
-    int32_t sample_count;
 
-    int16_t* samples;
-};
 
 namespace engine 
 {
