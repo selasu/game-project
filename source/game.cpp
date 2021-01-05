@@ -1,34 +1,37 @@
 #include "game.h"
+#include "asset/wav.h"
 
 #include <math.h>
+#include <stdio.h>
 
 #define Pi32 3.14159265359f
 static float sine = 0.0f;
+
+Sound test_sound = {};
 
 extern "C" __declspec(dllexport) GAME_UPDATE_AND_RENDER(game_update_and_render)
 {
     
 }
 
+int position;
+
 extern "C" __declspec(dllexport) GAME_GET_SOUND_SAMPLES(game_get_sound_samples)
 {
-    int16_t volume  = 3000;
-    int32_t tone_hz = 512;
-    int32_t wave_period = sound_buffer->samples_per_second / tone_hz;
-
-    int16_t* output = sound_buffer->samples;
-    for (int sindex = 0; sindex < sound_buffer->sample_count; ++sindex)
+    if (!test_sound.samples)
     {
-        float sine_value = sinf(sine);
-        int16_t value = (int16_t)(sine_value * volume);
+        void* data = platform->load_file("C:\\projects\\dababy.wav");
+        test_sound = load_wav(data);
+    }
 
-        *output++ = value;
-        *output++ = value;
+    int16_t* at = sound_buffer->samples;
 
-        sine += 2.0f * Pi32 * 1.0f / (float)wave_period;
-        if (sine > 2.0f * Pi32)
-        {
-            sine -= 2.0f * Pi32;
-        }
+    for (auto sindex = 0; sindex < sound_buffer->sample_count; ++sindex)
+    {
+        *at++ = test_sound.samples[position];
+        *at++ = test_sound.samples[position + 1];
+
+        position += 2;
+        if (position > test_sound.sample_count) position = 0;
     }
 }

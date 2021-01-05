@@ -7,6 +7,7 @@ add_library(sel_opengl SHARED
 
 add_library(sel_game SHARED
     game.cpp
+    asset/wav.cpp
 )
 
 target_compile_definitions(sel_game
