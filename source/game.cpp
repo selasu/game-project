@@ -1,37 +1,57 @@
 #include "game.h"
 #include "asset/wav.h"
 
-#include <math.h>
-#include <stdio.h>
+struct PlayingSound
+{
+    Sound   sound_data;
+    int32_t position;
 
-#define Pi32 3.14159265359f
-static float sine = 0.0f;
-
-Sound test_sound = {};
+    float volume;
+    bool  looping;
+    bool  active;
+};
 
 extern "C" __declspec(dllexport) GAME_UPDATE_AND_RENDER(game_update_and_render)
 {
     
 }
 
-int position;
+PlayingSound sound = {};
+bool loaded        = false;
 
 extern "C" __declspec(dllexport) GAME_GET_SOUND_SAMPLES(game_get_sound_samples)
 {
-    if (!test_sound.samples)
+    if (!loaded)
     {
-        void* data = platform->load_file("C:\\projects\\dababy.wav");
-        test_sound = load_wav(data);
+        loaded = true;
+
+        sound.sound_data = load_wav(platform->load_file("C:\\projects\\benny.wav"));
+        sound.volume     = 1.0f;
+        sound.active     = true;
+        sound.looping    = false;
     }
 
-    int16_t* at = sound_buffer->samples;
+    if (!sound.active) return;
 
+    int16_t* at = sound_buffer->samples;
     for (auto sindex = 0; sindex < sound_buffer->sample_count; ++sindex)
     {
-        *at++ = test_sound.samples[position];
-        *at++ = test_sound.samples[position + 1];
+        auto sample = (int)(sound.position * sound.sound_data.channel_count);
 
-        position += 2;
-        if (position > test_sound.sample_count) position = 0;
+        *at++ = (int16_t)(sound.sound_data.samples[sample] * sound.volume);
+        *at++ = (int16_t)(sound.sound_data.samples[sample + (sound.sound_data.channel_count - 1)] * sound.volume);
+
+        sound.position += 1;
+        if (sound.position >= sound.sound_data.sample_count)
+        {
+            if (sound.looping)
+            {
+                sound.position = 0;
+            }
+            else
+            {
+                sound.active = false;
+            }
+        }
     }
 }

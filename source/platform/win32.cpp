@@ -217,7 +217,7 @@ void win32_fill_sound_buffer(Win32SoundInfo* sound_output, SoundBuffer* sound_in
         int16_t* source = sound_input->samples;
 
         int16_t* output = (int16_t*)region1;
-        for (DWORD sample_index = 0; sample_index < region1_size / sound_output->bytes_per_sample; ++sample_index)
+        for (DWORD sindex = 0; sindex < region1_size / sound_output->bytes_per_sample; ++sindex)
         {
             *output++ = *source++;
             *output++ = *source++;
@@ -226,7 +226,7 @@ void win32_fill_sound_buffer(Win32SoundInfo* sound_output, SoundBuffer* sound_in
         }
 
         output = (int16_t*)region2;
-        for (DWORD sample_index = 0; sample_index < region2_size / sound_output->bytes_per_sample; ++sample_index)
+        for (DWORD sindex = 0; sindex < region2_size / sound_output->bytes_per_sample; ++sindex)
         {
             *output++ = *source++;
             *output++ = *source++;
