@@ -1,11 +1,6 @@
+#include "platform/platform.h"
+
 #include <stdint.h>
-
-typedef void*(load_file_t)(const char* file_name);
-
-struct Platform
-{
-    load_file_t* load_file;
-};
 
 static char* game_functions[] =
 {

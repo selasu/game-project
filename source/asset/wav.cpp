@@ -1,7 +1,5 @@
 #include "wav.h"
-
 #include "../util/assert.h"
-#include <stdio.h>
 
 #pragma pack(push, 1)
 
@@ -43,14 +41,6 @@ struct WAVfmt
 
 #pragma pack(pop)
 
-inline uint8_t* next(uint8_t* ptr)
-{
-    WAVChunk* chunk = (WAVChunk*)ptr;
-    auto size = (chunk->cksize + 1) & ~-1;
-    ptr += sizeof(WAVChunk) + size;
-    return ptr;
-}
-
 Sound load_wav(void* data)
 {
     Sound sound = {};
@@ -59,11 +49,16 @@ Sound load_wav(void* data)
     DEV_ASSERT(header->ckID == WAVid::riff);
     DEV_ASSERT(header->WAVEID == WAVid::wave);
 
+    // NOTE(selina): Data to extract from file
     uint32_t channel_count;
     uint32_t samples_size;
     int16_t* samples;
 
-    for (uint8_t* it = (uint8_t*)(header + 1); it < (uint8_t*)(header + 1) + header->cksize - 4; it = next(it))
+    for (
+        uint8_t* it = (uint8_t*)(header + 1); 
+        it < (uint8_t*)(header + 1) + header->cksize - 4; 
+        it += sizeof(WAVChunk) + ((((WAVChunk*)it)->cksize + 1) & ~-1)
+    )
     {
         switch (((WAVChunk*)it)->ckID)
         {

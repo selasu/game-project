@@ -30,13 +30,13 @@ typedef DIRECT_SOUND_CREATE(DirectSoundCreate_t);
 
 static bool running = true;
 
-struct Win32WorkQueueJob
+struct WorkQueueJob
 {
     void* data;
-    std::function<void(void*)> callback;
+    WorkQueueCallback* callback;
 };
 
-struct Win32WorkQueue
+struct WorkQueue
 {
     uint32_t volatile completed;
     uint32_t volatile to_complete;
@@ -46,7 +46,7 @@ struct Win32WorkQueue
 
     HANDLE semaphore;
 
-    Win32WorkQueueJob jobs[QUEUE_SIZE];
+    WorkQueueJob jobs[QUEUE_SIZE];
 };
 
 struct Win32SoundInfo
@@ -117,7 +117,7 @@ LRESULT __stdcall win32_callback(HWND handle, UINT msg, WPARAM wparam, LPARAM lp
     return result;
 }
 
-bool win32_perform_job(Win32WorkQueue* queue)
+bool win32_perform_job(WorkQueue* queue)
 {
     bool sleep = true;
 
@@ -126,13 +126,11 @@ bool win32_perform_job(Win32WorkQueue* queue)
 
     if (original_read != queue->next_write_index)
     {
-        // Ensure this job is still available
         auto index = InterlockedCompareExchange((long volatile*)&queue->next_read_index, next_read, original_read);
         if (index == original_read)
         {
-            // Launch the job and increment the completion count afterwards
             auto job = queue->jobs[index];
-            job.callback(job.data);
+            job.callback(queue, job.data);
             InterlockedIncrement((long volatile*)&queue->completed);
         }
 
@@ -146,19 +144,18 @@ unsigned long __stdcall win32_thread_proc(void* param)
 {
     printf("[win32] Thread #%u: Starting...\n", GetCurrentThreadId());
 
-    auto queue = (Win32WorkQueue*)param;
+    auto queue = (WorkQueue*)param;
 
     while (1)
     {
         if (win32_perform_job(queue))
         {
-            // If the read index matches write index, wait for semaphore to free
             WaitForSingleObjectEx(queue->semaphore, INFINITE, 0);
         }
     }
 }
 
-void win32_add_job(Win32WorkQueue* queue, std::function<void(void*)> callback, void* data)
+void win32_add_job(WorkQueue* queue, WorkQueueCallback* callback, void* data)
 {
     uint32_t new_write_index = (queue->next_write_index + 1) % array_count(queue->jobs);
     DEV_ASSERT(new_write_index != queue->next_read_index);
@@ -327,7 +324,7 @@ int main(int argc, char* argv[])
 
     bool granular = timeBeginPeriod(1) == TIMERR_NOERROR;
 
-    Win32WorkQueue queue = {};
+    WorkQueue queue = {};
     queue.semaphore = CreateSemaphoreEx(0, 0, THREAD_COUNT, 0, 0, SEMAPHORE_ALL_ACCESS);
 
     for (uint32_t i = 0; i < THREAD_COUNT; ++i)
@@ -337,7 +334,7 @@ int main(int argc, char* argv[])
         CloseHandle(handle);
     }
 
-    auto test_job = [](void* data) {    
+    auto test_job = [](WorkQueue* queue, void* data) {    
         Sleep(1500);
         printf("[win32] Thread #%u: %s\n", GetCurrentThreadId(), (char*)data);
     };
