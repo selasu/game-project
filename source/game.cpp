@@ -31,27 +31,34 @@ extern "C" __declspec(dllexport) GAME_GET_SOUND_SAMPLES(game_get_sound_samples)
         sound.looping    = false;
     }
 
-    if (!sound.active) return;
-
     int16_t* at = sound_buffer->samples;
     for (auto sindex = 0; sindex < sound_buffer->sample_count; ++sindex)
     {
-        auto sample = (int)(sound.position * sound.sound_data.channel_count);
+        float lsample = 0;
+        float rsample = 0;
 
-        *at++ = (int16_t)(sound.sound_data.samples[sample] * sound.volume);
-        *at++ = (int16_t)(sound.sound_data.samples[sample + (sound.sound_data.channel_count - 1)] * sound.volume);
-
-        sound.position += 1;
-        if (sound.position >= sound.sound_data.sample_count)
+        if (sound.active)
         {
-            if (sound.looping)
+            int32_t sample = (int32_t)(sound.position * sound.sound_data.channel_count);
+
+            lsample = sound.sound_data.samples[sample] * sound.volume;
+            rsample = sound.sound_data.samples[sample + (sound.sound_data.channel_count - 1)] * sound.volume;
+
+            sound.position += 1;
+            if (sound.position >= sound.sound_data.sample_count)
             {
-                sound.position = 0;
-            }
-            else
-            {
-                sound.active = false;
+                if (sound.looping)
+                {
+                    sound.position = 0;
+                }
+                else
+                {
+                    sound.active = false;
+                }
             }
         }
+
+        *at++ = (int16_t)lsample;
+        *at++ = (int16_t)rsample;
     }
 }
