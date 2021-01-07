@@ -14,8 +14,8 @@ struct SoundBuffer
 
 struct PlayingSound
 {
-    Sound   sound_data;
-    int32_t position;
+    LoadedSound sound_data;
+    int32_t     samples_played;
 
     v2   volume;
     bool looping;
@@ -34,8 +34,6 @@ struct Audio
 
 struct Game
 {
-    bool initialised;
-
     Audio* audio;
 };
 

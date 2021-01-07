@@ -2,7 +2,7 @@
 
 #include <stdint.h>
 
-struct Sound
+struct LoadedSound
 {
     int32_t sample_count;
     int32_t channel_count;
@@ -10,4 +10,4 @@ struct Sound
     int16_t* samples;
 };
 
-Sound load_wav(void* data);
+LoadedSound load_wav(void* data);

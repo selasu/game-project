@@ -41,9 +41,9 @@ struct WAVfmt
 
 #pragma pack(pop)
 
-Sound load_wav(void* data)
+LoadedSound load_wav(void* data)
 {
-    Sound sound = {};
+    LoadedSound sound = {};
 
     WAVHeader *header = (WAVHeader*)data;
     DEV_ASSERT(header->ckID == WAVid::riff);

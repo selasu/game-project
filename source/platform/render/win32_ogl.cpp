@@ -8,6 +8,7 @@
 #include <stdio.h>
 
 #include "win32_render.h"
+#include "render_ogl.h"
 #include "../../util/assert.h"
 
 // See https://www.opengl.org/registry/specs/ARB/wgl_create_context.txt for all values
@@ -32,7 +33,7 @@
 typedef BOOL(__stdcall wglChoosePixelFormatARB_t)(HDC, const int*, const FLOAT*, UINT, int*, UINT*);
 typedef HGLRC(__stdcall wglCreateContextAttribsARB_t)(HDC, HGLRC, const int*);
 
-void* Win32Alloc(size_t size)
+void* win32_alloc(size_t size)
 {
     return VirtualAlloc(0, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 }
@@ -126,16 +127,23 @@ extern "C" __declspec(dllexport) WIN32_LOAD_RENDERER(win32_load_renderer)
     auto hglrc = wglCreateContextAttribsARB(device_context, 0, ogl_attr);
     if (!hglrc || !wglMakeCurrent(device_context, hglrc)) DEV_ASSERT(false)
 
-    // NOTE(selina): Load OpenGL functions
-    auto lib = LoadLibraryA("opengl32.dll");
-    auto load_function = [&lib](const char* name) {
-        auto f = wglGetProcAddress(name);
-        if (!f || f == (void*)0x1 || f == (void*)0x2 || f == (void*)0x3 || f == (void*)-1) f = GetProcAddress(lib, name);
-        return f;
-    };
-    FreeLibrary(lib);
+    OpenGL* opengl = (OpenGL*)win32_alloc(sizeof(OpenGL));
+    if (opengl)
+    {
+        #define load_function(name) opengl->name = (type_##name *)wglGetProcAddress(#name)
+
+        load_function(glBindBuffer);
+        load_function(glBindVertexArray);
+        load_function(glBufferData);
+        load_function(glGenBuffers);
+        load_function(glGenVertexArrays);
+
+        init_opengl(opengl);
+    }
 
     printf("[OpenGL] %s\n", (char*)glGetString(GL_VERSION));
+
+    return (RenderAPI*)opengl;
 }
 
 #endif

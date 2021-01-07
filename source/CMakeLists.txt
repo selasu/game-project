@@ -3,6 +3,7 @@ project(game-project VERSION 1.0.0 LANGUAGES CXX)
 
 add_library(sel_opengl SHARED
     platform/render/win32_ogl.cpp
+    platform/render/render_ogl.cpp
 )
 
 add_library(sel_game SHARED

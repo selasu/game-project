@@ -57,13 +57,7 @@ struct Win32SoundInfo
 
     int32_t buffer_size;
 
-    DWORD safety_bytes;
-
     LPDIRECTSOUNDBUFFER buffer;
-
-    bool is_valid;
-
-    float sine;
 };
 
 struct Win32GameCode
@@ -74,18 +68,56 @@ struct Win32GameCode
 
 struct Win32Code
 {
-    HMODULE dll;
+    HMODULE  dll;
+    FILETIME last_write_time;
 
     char* dll_path;
     char* temp_path;
     char* lock_path;
 
     uint32_t function_count;
-    char** function_names;
-    void** functions;
+    char**   function_names;
+    void**   functions;
 
     bool is_valid;
 };
+
+PLATFORM_ALLOCATE_MEMORY(win32_allocate_memory)
+{
+    return VirtualAlloc(0, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+}
+
+PLATFORM_ADD_JOB(win32_add_job)
+{
+    uint32_t new_write_index = (queue->next_write_index + 1) % array_count(queue->jobs);
+    DEV_ASSERT(new_write_index != queue->next_read_index);
+
+    auto job = queue->jobs + queue->next_write_index;
+    job->callback = callback;
+    job->data     = data;
+
+    ++queue->to_complete;
+
+    queue->next_write_index = new_write_index;
+    ReleaseSemaphore(queue->semaphore, 1, 0);
+}
+
+PLATFORM_LOAD_FILE(win32_read_file)
+{
+    void* data = 0;
+
+    HANDLE file = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+    DEV_ASSERT(file != INVALID_HANDLE_VALUE)
+
+    DWORD fsize = GetFileSize(file, 0);
+    data = win32_allocate_memory(fsize);
+
+    DWORD read;
+    ReadFile(file, data, fsize, &read, 0);
+    DEV_ASSERT(read == fsize)
+
+    return data;
+}
 
 LRESULT __stdcall win32_callback(HWND handle, UINT msg, WPARAM wparam, LPARAM lparam)
 {
@@ -97,12 +129,7 @@ LRESULT __stdcall win32_callback(HWND handle, UINT msg, WPARAM wparam, LPARAM lp
     {
     case WM_CLOSE:
     {
-        // NOTE(selina): Since we aren't actually handling this event yet, just call destroy window can be
-        // processed. Removing this means the application won't close.
         DestroyWindow(handle);
-        
-        // TODO(selina): Add a way for window destruction to be called via function. Maybe
-        // this should be relegated to os_delete_context? Would just mean thinking where it goes. - 22/12/2020
     } break;
     
     case WM_DESTROY:
@@ -155,43 +182,6 @@ unsigned long __stdcall win32_thread_proc(void* param)
     }
 }
 
-PLATFORM_ALLOCATE_MEMORY(win32_allocate_memory)
-{
-    return VirtualAlloc(0, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-}
-
-PLATFORM_ADD_JOB(win32_add_job)
-{
-    uint32_t new_write_index = (queue->next_write_index + 1) % array_count(queue->jobs);
-    DEV_ASSERT(new_write_index != queue->next_read_index);
-
-    auto job = queue->jobs + queue->next_write_index;
-    job->callback = callback;
-    job->data     = data;
-
-    ++queue->to_complete;
-
-    queue->next_write_index = new_write_index;
-    ReleaseSemaphore(queue->semaphore, 1, 0);
-}
-
-PLATFORM_LOAD_FILE(win32_read_file)
-{
-    void* data = 0;
-
-    HANDLE file = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
-    DEV_ASSERT(file != INVALID_HANDLE_VALUE)
-
-    DWORD fsize = GetFileSize(file, 0);
-    data = VirtualAlloc(0, fsize, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
-
-    DWORD read;
-    ReadFile(file, data, fsize, &read, 0);
-    DEV_ASSERT(read == fsize)
-
-    return data;
-}
-
 void win32_clear_sound_buffer(Win32SoundInfo* sound_output)
 {
     void *region1, *region2;
@@ -239,6 +229,19 @@ void win32_fill_sound_buffer(Win32SoundInfo* sound_output, SoundBuffer* sound_in
     }
 }
 
+FILETIME win32_get_last_write_time(char* filename)
+{
+    FILETIME last_write_time = {};
+
+    WIN32_FILE_ATTRIBUTE_DATA data;
+    if (GetFileAttributesExA(filename, GetFileExInfoStandard, &data))
+    {
+        last_write_time = data.ftLastWriteTime;
+    }
+
+    return last_write_time;
+}
+
 void win32_unload_code(Win32Code* code)
 {
     if (code->dll)
@@ -256,6 +259,7 @@ void win32_load_code(Win32Code* code)
     WIN32_FILE_ATTRIBUTE_DATA ignored;
     if (!GetFileAttributesExA(code->lock_path, GetFileExInfoStandard, &ignored))
     {
+        code->last_write_time = win32_get_last_write_time(code->dll_path);
         CopyFileA(code->dll_path, code->temp_path, FALSE);
 
         code->dll = LoadLibraryA(code->temp_path);
@@ -282,6 +286,12 @@ void win32_load_code(Win32Code* code)
     {
         win32_unload_code(code);
     }
+}
+
+bool win32_code_changed(Win32Code* code)
+{
+    FILETIME new_write_time = win32_get_last_write_time(code->dll_path);
+    return CompareFileTime(&new_write_time, &code->last_write_time) != 0;
 }
 
 void cat_strings(size_t a_size, char* a, size_t b_size, char* b, size_t dest_count, char* dest)
@@ -398,23 +408,11 @@ int main(int argc, char* argv[])
 
     renderer.win32_load_renderer(GetDC(handle));
 
-    // NOTE(selina): Query refresh rate
-    int32_t refresh_rate = 60;
-    int32_t real_refresh_rate = GetDeviceCaps(device_context, VREFRESH);
-    if (real_refresh_rate > 1)
-    {
-        refresh_rate = real_refresh_rate;
-    }
-    float update_hz = (float)refresh_rate / 2.0f;
-    auto target_time = 1.0f / update_hz;
-
     // NOTE(selina): Load audio engine
     Win32SoundInfo sound_info = {};
     sound_info.samples_per_second    = 44100;
     sound_info.bytes_per_sample      = 2 * sizeof(int16_t);
     sound_info.buffer_size           = sound_info.samples_per_second * sound_info.bytes_per_sample;
-    sound_info.is_valid              = true;
-    sound_info.safety_bytes          = (int)((float)(sound_info.samples_per_second * sound_info.bytes_per_sample) / update_hz / 3.0f);
 
     auto dsound_lib = LoadLibraryA("dsound.dll");
     if (dsound_lib)
@@ -447,7 +445,7 @@ int main(int argc, char* argv[])
                 
                 buffer_desc = {};
                 buffer_desc.dwSize        = sizeof(buffer_desc);
-                buffer_desc.dwFlags       = DSBCAPS_GETCURRENTPOSITION2;
+                buffer_desc.dwFlags       = DSBCAPS_GETCURRENTPOSITION2 | DSBCAPS_GLOBALFOCUS;
                 buffer_desc.dwBufferBytes = sound_info.buffer_size;
                 buffer_desc.lpwfxFormat   = &wave_format;
 
@@ -500,10 +498,12 @@ int main(int argc, char* argv[])
         }
         
         float dt = 0.0166f;
-        // TODO(selina): Play audio
+        
         DWORD play_cursor, write_cursor;
         if (SUCCEEDED(sound_info.buffer->GetCurrentPosition(&play_cursor, &write_cursor)))
         {
+            // TODO(selina): Documentation pass - comment all of the stuff in this scope block
+            
             DWORD safety_bytes = (int)((float)(sound_info.bytes_per_sample * sound_info.samples_per_second) * dt * 1);
             safety_bytes -= safety_bytes % sound_info.bytes_per_sample;
 
@@ -558,6 +558,29 @@ int main(int argc, char* argv[])
         
         // NOTE(selina): Display frame
         renderer.win32_end_frame();
+
+        if (win32_code_changed(&game_code))
+        {
+            printf("[win32] Reloading game code...\n");
+            win32_unload_code(&game_code);
+            for (int attempt = 0; !game_code.is_valid && attempt < 100; ++attempt)
+            {
+                win32_load_code(&game_code);
+                Sleep(100);
+            }
+        }
+
+        if (win32_code_changed(&renderer_code))
+        {
+            printf("[win32] Reloading renderer code...\n");
+            win32_unload_code(&renderer_code);
+            for (int attempt = 0; !renderer_code.is_valid && attempt < 100; ++attempt)
+            {
+                win32_load_code(&renderer_code);
+                Sleep(100);
+            }
+        }
+
 
         // NOTE(selina): Handle timing
         LARGE_INTEGER current_counter;

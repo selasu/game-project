@@ -1,7 +1,5 @@
 #include "game.h"
 
-#include <stdio.h>
-
 extern "C" __declspec(dllexport) GAME_UPDATE_AND_RENDER(game_update_and_render)
 {
     
@@ -10,21 +8,23 @@ extern "C" __declspec(dllexport) GAME_UPDATE_AND_RENDER(game_update_and_render)
 extern "C" __declspec(dllexport) GAME_GET_SOUND_SAMPLES(game_get_sound_samples)
 {
     PlatformAPI* platform = &memory->platform_api;
+    Game* game_state      = memory->game_state;
 
-    Game* game_state = memory->game_state;
     if (!game_state)
     {
+        // TODO(selina): Replace all this with a more robust system for initialising memory and loading assets
+
         game_state = memory->game_state = (Game*)platform->allocate_memory(sizeof(game_state));
 
         PlayingSound* sound = (PlayingSound*)platform->allocate_memory(sizeof(PlayingSound));
-        sound->sound_data = load_wav(platform->load_file("C:\\projects\\test.wav"));
+        sound->sound_data = load_wav(platform->load_file("C:\\projects\\game\\resources\\acapella.wav"));
         sound->volume     = v2{1.0f, 1.0f};
         sound->active     = true;
         sound->looping    = false;
 
         PlayingSound* sound2 = (PlayingSound*)platform->allocate_memory(sizeof(PlayingSound));
-        sound2->sound_data = load_wav(platform->load_file("C:\\projects\\benny.wav"));
-        sound2->volume     = v2{1.0f, 1.0f};
+        sound2->sound_data = load_wav(platform->load_file("C:\\projects\\game\\resources\\instrumental.wav"));
+        sound2->volume     = v2{0.25f, 0.25f};
         sound2->active     = true;
         sound2->looping    = false;
 
@@ -39,6 +39,10 @@ extern "C" __declspec(dllexport) GAME_GET_SOUND_SAMPLES(game_get_sound_samples)
     Audio* audio = game_state->audio;
     int16_t* at  = sound_buffer->samples;
 
+    // NOTE(selina): This is just testing the game code reloading
+    audio->first_playing->volume = v2{1.0f, 1.0f}; // 100% volume - acapella
+    // audio->first_playing->volume = v2{0.0f, 0.0f}; // 0% volume - acapella
+
     for (int i = 0; i < sound_buffer->sample_count; ++i)
     {
         int16_t lsample = 0;
@@ -48,17 +52,19 @@ extern "C" __declspec(dllexport) GAME_GET_SOUND_SAMPLES(game_get_sound_samples)
         {
             PlayingSound* sound = *sound_ptr;
 
-            int32_t sample = (int32_t)(sound->position * sound->sound_data.channel_count);
+            if (!sound->active) continue;
+
+            int32_t sample = (int32_t)(sound->samples_played * sound->sound_data.channel_count);
 
             lsample += (int16_t)(sound->sound_data.samples[sample] * sound->volume.x);
             rsample += (int16_t)(sound->sound_data.samples[sample + sound->sound_data.channel_count - 1] * sound->volume.y);
 
-            ++sound->position;
-            if (sound->position >= sound->sound_data.sample_count)
+            ++sound->samples_played;
+            if (sound->samples_played >= sound->sound_data.sample_count)
             {
                 if (sound->looping)
                 {
-                    sound->position = 0;
+                    sound->samples_played = 0;
                 }
                 else
                 {
