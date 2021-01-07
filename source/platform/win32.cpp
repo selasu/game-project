@@ -33,7 +33,7 @@ static bool running = true;
 struct WorkQueueJob
 {
     void* data;
-    WorkQueueCallback* callback;
+    work_queue_callback_t* callback;
 };
 
 struct WorkQueue
@@ -155,7 +155,12 @@ unsigned long __stdcall win32_thread_proc(void* param)
     }
 }
 
-void win32_add_job(WorkQueue* queue, WorkQueueCallback* callback, void* data)
+PLATFORM_ALLOCATE_MEMORY(win32_allocate_memory)
+{
+    return VirtualAlloc(0, size, MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+}
+
+PLATFORM_ADD_JOB(win32_add_job)
 {
     uint32_t new_write_index = (queue->next_write_index + 1) % array_count(queue->jobs);
     DEV_ASSERT(new_write_index != queue->next_read_index);
@@ -170,11 +175,11 @@ void win32_add_job(WorkQueue* queue, WorkQueueCallback* callback, void* data)
     ReleaseSemaphore(queue->semaphore, 1, 0);
 }
 
-void* win32_read_file(const char* file_path)
+PLATFORM_LOAD_FILE(win32_read_file)
 {
     void* data = 0;
 
-    HANDLE file = CreateFileA(file_path, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
+    HANDLE file = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
     DEV_ASSERT(file != INVALID_HANDLE_VALUE)
 
     DWORD fsize = GetFileSize(file, 0);
@@ -472,8 +477,11 @@ int main(int argc, char* argv[])
 
     float last_dt = 0.01666f;
 
-    Platform platform;
-    platform.load_file = win32_read_file;
+    GameMemory game_memory = {};
+
+    game_memory.platform_api.add_job = win32_add_job;
+    game_memory.platform_api.load_file = win32_read_file;
+    game_memory.platform_api.allocate_memory = win32_allocate_memory;
 
     while (running)
     {
@@ -488,7 +496,7 @@ int main(int argc, char* argv[])
         // NOTE(selina): Run game for frame
         if (game.update_and_render)
         {
-            game.update_and_render(&platform);
+            game.update_and_render(&game_memory);
         }
         
         float dt = 0.0166f;
@@ -543,7 +551,7 @@ int main(int argc, char* argv[])
                 sound_buffer.sample_count = to_write / sound_info.bytes_per_sample;
                 DEV_ASSERT(to_write % 4 == 0)
 
-                game.get_sound_samples(&platform, &sound_buffer);
+                game.get_sound_samples(&game_memory, &sound_buffer);
                 win32_fill_sound_buffer(&sound_info, &sound_buffer, to_lock, to_write);
             }
         }
