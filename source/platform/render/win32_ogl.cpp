@@ -3,7 +3,6 @@
 #pragma comment(lib, "opengl32.lib")
 
 #include <windows.h>
-#include <gl/gl.h>
 
 #include <stdio.h>
 
