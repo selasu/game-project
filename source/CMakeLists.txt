@@ -6,6 +6,13 @@ add_library(sel_opengl SHARED
     platform/render/render_ogl.cpp
 )
 
+target_compile_definitions(sel_opengl
+    PUBLIC 
+        ASSERTIONS_ON
+    PRIVATE
+        cxx_std_17 
+)
+
 add_library(sel_game SHARED
     game.cpp
     asset/wav.cpp

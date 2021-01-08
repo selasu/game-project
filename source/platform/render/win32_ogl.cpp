@@ -40,14 +40,14 @@ void* win32_alloc(size_t size)
 
 extern "C" __declspec(dllexport) RENDER_BEGIN_FRAME(win32_begin_frame)
 {
-
+    OpenGL* opengl = (OpenGL*)render_api;
 }
 
 extern "C" __declspec(dllexport) RENDER_END_FRAME(win32_end_frame)
 {
-    glClear(GL_COLOR_BUFFER_BIT);
-    glClearColor(1.0f, 0.0f, 1.0f, 1.0f);
-
+    OpenGL* opengl = (OpenGL*)render_api;
+    
+    opengl_end_frame(opengl);
     SwapBuffers(wglGetCurrentDC());
 }
 
@@ -137,6 +137,20 @@ extern "C" __declspec(dllexport) WIN32_LOAD_RENDERER(win32_load_renderer)
         load_function(glBufferData);
         load_function(glGenBuffers);
         load_function(glGenVertexArrays);
+        load_function(glVertexAttribPointer);
+        load_function(glEnableVertexAttribArray);
+        load_function(glCreateShader);
+        load_function(glShaderSource);
+        load_function(glCompileShader);
+        load_function(glCreateProgram);
+        load_function(glAttachShader);
+        load_function(glLinkProgram);
+        load_function(glValidateProgram);
+        load_function(glGetProgramiv);
+        load_function(glGetShaderInfoLog);
+        load_function(glGetProgramInfoLog);
+        load_function(glDeleteShader);
+        load_function(glUseProgram);
 
         init_opengl(opengl);
     }

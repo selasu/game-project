@@ -39,10 +39,6 @@ extern "C" __declspec(dllexport) GAME_GET_SOUND_SAMPLES(game_get_sound_samples)
     Audio* audio = game_state->audio;
     int16_t* at  = sound_buffer->samples;
 
-    // NOTE(selina): This is just testing the game code reloading
-    audio->first_playing->volume = v2{1.0f, 1.0f}; // 100% volume - acapella
-    // audio->first_playing->volume = v2{0.0f, 0.0f}; // 0% volume - acapella
-
     for (int i = 0; i < sound_buffer->sample_count; ++i)
     {
         int16_t lsample = 0;

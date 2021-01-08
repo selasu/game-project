@@ -294,6 +294,25 @@ bool win32_code_changed(Win32Code* code)
     return CompareFileTime(&new_write_time, &code->last_write_time) != 0;
 }
 
+bool win32_try_update_code(Win32Code* code)
+{
+    bool changed = false;
+
+    if (win32_code_changed(code))
+    {
+        win32_unload_code(code);
+        for (int attempt = 0; !code->is_valid && attempt < 100; ++attempt)
+        {
+            win32_load_code(code);
+            Sleep(100);
+        }
+
+        changed = true;
+    }
+
+    return changed;
+}
+
 void cat_strings(size_t a_size, char* a, size_t b_size, char* b, size_t dest_count, char* dest)
 {
     for (int cindex = 0; cindex < a_size; ++cindex) *dest++ = *a++;
@@ -406,7 +425,7 @@ int main(int argc, char* argv[])
 
     DEV_ASSERT(game_code.is_valid && renderer_code.is_valid)
 
-    renderer.win32_load_renderer(GetDC(handle));
+    RenderAPI* render_api = renderer.win32_load_renderer(GetDC(handle));
 
     // NOTE(selina): Load audio engine
     Win32SoundInfo sound_info = {};
@@ -557,28 +576,18 @@ int main(int argc, char* argv[])
         }
         
         // NOTE(selina): Display frame
-        renderer.win32_end_frame();
+        renderer.win32_end_frame(render_api);
 
-        if (win32_code_changed(&game_code))
+        if (win32_try_update_code(&game_code))
         {
-            printf("[win32] Reloading game code...\n");
-            win32_unload_code(&game_code);
-            for (int attempt = 0; !game_code.is_valid && attempt < 100; ++attempt)
-            {
-                win32_load_code(&game_code);
-                Sleep(100);
-            }
+            printf("[win32] Reloaded game code...\n");
+            // TODO(selina): Let game know this happened
         }
 
-        if (win32_code_changed(&renderer_code))
+        if (win32_try_update_code(&renderer_code))
         {
-            printf("[win32] Reloading renderer code...\n");
-            win32_unload_code(&renderer_code);
-            for (int attempt = 0; !renderer_code.is_valid && attempt < 100; ++attempt)
-            {
-                win32_load_code(&renderer_code);
-                Sleep(100);
-            }
+            printf("[win32] Reloaded renderer code...\n");
+            // NOTE(selina): Should we inform the renderer about this change?
         }
 
 
