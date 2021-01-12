@@ -25,4 +25,6 @@ struct GameMemory
     struct Game* game_state;
 
     PlatformAPI platform_api;
+
+    WorkQueue* work_queue;
 };

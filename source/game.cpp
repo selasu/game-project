@@ -37,12 +37,12 @@ extern "C" __declspec(dllexport) GAME_GET_SOUND_SAMPLES(game_get_sound_samples)
     }
 
     Audio* audio = game_state->audio;
-    int16_t* at  = sound_buffer->samples;
+    i16* at      = sound_buffer->samples;
 
-    for (int i = 0; i < sound_buffer->sample_count; ++i)
+    for (i32 i = 0; i < sound_buffer->sample_count; ++i)
     {
-        int16_t lsample = 0;
-        int16_t rsample = 0;
+        i16 lsample = 0;
+        i16 rsample = 0;
 
         for (PlayingSound** sound_ptr = &audio->first_playing; *sound_ptr;)
         {
@@ -50,10 +50,10 @@ extern "C" __declspec(dllexport) GAME_GET_SOUND_SAMPLES(game_get_sound_samples)
 
             if (!sound->active) continue;
 
-            int32_t sample = (int32_t)(sound->samples_played * sound->sound_data.channel_count);
+            i32 sample = (i32)(sound->samples_played * sound->sound_data.channel_count);
 
-            lsample += (int16_t)(sound->sound_data.samples[sample] * sound->volume.x);
-            rsample += (int16_t)(sound->sound_data.samples[sample + sound->sound_data.channel_count - 1] * sound->volume.y);
+            lsample += (i16)(sound->sound_data.samples[sample] * sound->volume.x);
+            rsample += (i16)(sound->sound_data.samples[sample + sound->sound_data.channel_count - 1] * sound->volume.y);
 
             ++sound->samples_played;
             if (sound->samples_played >= sound->sound_data.sample_count)
@@ -75,7 +75,7 @@ extern "C" __declspec(dllexport) GAME_GET_SOUND_SAMPLES(game_get_sound_samples)
             }
         }
 
-        *at++ = (int16_t)(lsample * audio->master_volume.x);
-        *at++ = (int16_t)(rsample * audio->master_volume.y);
+        *at++ = (i16)(lsample * audio->master_volume.x);
+        *at++ = (i16)(rsample * audio->master_volume.y);
     }
 }

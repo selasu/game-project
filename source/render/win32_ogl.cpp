@@ -3,10 +3,9 @@
 #pragma comment(lib, "opengl32.lib")
 
 #include <windows.h>
-#include <stdio.h>
 
-#include "win32_render.h"
 #include "render_ogl.h"
+#include "win32_render.h"
 #include "../util/assert.h"
 
 // See https://www.opengl.org/registry/specs/ARB/wgl_create_context.txt for all values
@@ -60,11 +59,10 @@ extern "C" __declspec(dllexport) WIN32_LOAD_RENDERER(win32_load_renderer)
         wc.lpfnWndProc   = DefWindowProc;
         wc.lpszClassName = "SelengineWGLLoader";
         wc.hInstance     = GetModuleHandle(0);
-        if (!RegisterClassExA(&wc)) ASSERT(false);
+        ASSERT(RegisterClassExA(&wc));
 
         auto handle = CreateWindowExA(0, wc.lpszClassName, wc.lpszClassName, 0, 0, 0, 0, 0, 0, 0, wc.hInstance, 0);
-        if (!handle) ASSERT(false);
-        auto dc = GetDC(handle);
+        ASSERT(handle);
 
         PIXELFORMATDESCRIPTOR pfd;
         pfd.nSize        = sizeof(PIXELFORMATDESCRIPTOR);
@@ -76,11 +74,12 @@ extern "C" __declspec(dllexport) WIN32_LOAD_RENDERER(win32_load_renderer)
         pfd.cStencilBits = 8;
         pfd.iLayerType   = PFD_MAIN_PLANE;
 
+        auto dc = GetDC(handle);
         auto format = ChoosePixelFormat(dc, &pfd);
-        if (!format || !SetPixelFormat(dc, format, &pfd)) ASSERT(false);
+        ASSERT(format && SetPixelFormat(dc, format, &pfd));
 
         auto hglrc = wglCreateContext(dc);
-        if (!hglrc || !wglMakeCurrent(dc, hglrc)) ASSERT(false);
+        ASSERT(hglrc && wglMakeCurrent(dc, hglrc));
 
         wglChoosePixelFormatARB = (wglChoosePixelFormatARB_t*)wglGetProcAddress("wglChoosePixelFormatARB");
         wglCreateContextAttribsARB = (wglCreateContextAttribsARB_t*)wglGetProcAddress("wglCreateContextAttribsARB");
@@ -109,11 +108,11 @@ extern "C" __declspec(dllexport) WIN32_LOAD_RENDERER(win32_load_renderer)
     int format;
     unsigned int formatc;
     wglChoosePixelFormatARB(device_context, format_attr, 0, 1, &format, &formatc);
-    if (!formatc) ASSERT(false);
+    ASSERT(formatc);
 
     PIXELFORMATDESCRIPTOR pfd;
     DescribePixelFormat(device_context, format, sizeof(pfd), &pfd);
-    if (!SetPixelFormat(device_context, format, &pfd)) {}
+    ASSERT(SetPixelFormat(device_context, format, &pfd));
 
     int ogl_attr[] = {
         WGL_CONTEXT_MAJOR_VERSION_ARB, 3,
@@ -123,7 +122,7 @@ extern "C" __declspec(dllexport) WIN32_LOAD_RENDERER(win32_load_renderer)
     };
 
     auto hglrc = wglCreateContextAttribsARB(device_context, 0, ogl_attr);
-    if (!hglrc || !wglMakeCurrent(device_context, hglrc)) ASSERT(false);
+    ASSERT(hglrc && wglMakeCurrent(device_context, hglrc));
 
     OpenGL* opengl = (OpenGL*)win32_alloc(sizeof(OpenGL));
     if (opengl)
@@ -152,8 +151,6 @@ extern "C" __declspec(dllexport) WIN32_LOAD_RENDERER(win32_load_renderer)
 
         init_opengl(opengl);
     }
-
-    printf("[OpenGL] %s\n", (char*)glGetString(GL_VERSION));
 
     return (RenderAPI*)opengl;
 }

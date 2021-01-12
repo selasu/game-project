@@ -6,6 +6,7 @@
 #include <windows.h>
 #include <dsound.h>
 
+#include "../types.h"
 #include "../game.h"
 #include "../util/assert.h"
 #include "../render/win32_render.h"
@@ -19,7 +20,7 @@
 #define zero_array(size, ptr) zero_size((size) * sizeof((ptr)[0]), (ptr))
 void zero_size(size_t size, void* ptr)
 {
-    uint8_t* byte = (uint8_t*)ptr;
+    u8* byte = (u8*)ptr;
     while (--size) *byte++ = 0;
 }
 
@@ -36,11 +37,11 @@ struct WorkQueueJob
 
 struct WorkQueue
 {
-    uint32_t volatile completed;
-    uint32_t volatile to_complete;
+    u32 volatile completed;
+    u32 volatile to_complete;
 
-    uint32_t volatile next_write_index;
-    uint32_t volatile next_read_index;
+    u32 volatile next_write_index;
+    u32 volatile next_read_index;
 
     HANDLE semaphore;
 
@@ -49,11 +50,11 @@ struct WorkQueue
 
 struct Win32SoundInfo
 {
-    int32_t sample_index;
-    int32_t samples_per_second;
-    int32_t bytes_per_sample;
+    u32 sample_index;
+    u32 samples_per_second;
+    u32 bytes_per_sample;
 
-    int32_t buffer_size;
+    u32 buffer_size;
 
     LPDIRECTSOUNDBUFFER buffer;
 };
@@ -73,9 +74,9 @@ struct Win32Code
     char* temp_path;
     char* lock_path;
 
-    uint32_t function_count;
-    char**   function_names;
-    void**   functions;
+    u32    function_count;
+    char** function_names;
+    void** functions;
 
     bool is_valid;
 };
@@ -87,7 +88,7 @@ PLATFORM_ALLOCATE_MEMORY(win32_allocate_memory)
 
 PLATFORM_ADD_JOB(win32_add_job)
 {
-    uint32_t new_write_index = (queue->next_write_index + 1) % array_count(queue->jobs);
+    u32 new_write_index = (queue->next_write_index + 1) % array_count(queue->jobs);
     ASSERT(new_write_index != queue->next_read_index);
 
     auto job = queue->jobs + queue->next_write_index;
@@ -205,9 +206,9 @@ void win32_fill_sound_buffer(Win32SoundInfo* sound_output, SoundBuffer* sound_in
 
     if (SUCCEEDED(sound_output->buffer->Lock(to_lock, to_write, &region1, &region1_size, &region2, &region2_size, 0)))
     {
-        int16_t* source = sound_input->samples;
+        i16* source = sound_input->samples;
 
-        int16_t* output = (int16_t*)region1;
+        i16* output = (i16*)region1;
         for (DWORD sindex = 0; sindex < region1_size / sound_output->bytes_per_sample; ++sindex)
         {
             *output++ = *source++;
@@ -216,7 +217,7 @@ void win32_fill_sound_buffer(Win32SoundInfo* sound_output, SoundBuffer* sound_in
             ++sound_output->sample_index;
         }
 
-        output = (int16_t*)region2;
+        output = (i16*)region2;
         for (DWORD sindex = 0; sindex < region2_size / sound_output->bytes_per_sample; ++sindex)
         {
             *output++ = *source++;
@@ -266,7 +267,7 @@ void win32_load_code(Win32Code* code)
         {
             code->is_valid = true;
 
-            for (uint32_t findex = 0; findex < code->function_count && code->is_valid; ++findex)
+            for (u32 findex = 0; findex < code->function_count && code->is_valid; ++findex)
             {
                 void* f = GetProcAddress(code->dll, code->function_names[findex]);
                 if (f)
@@ -300,7 +301,7 @@ bool win32_try_update_code(Win32Code* code)
     if (win32_code_changed(code))
     {
         win32_unload_code(code);
-        for (int attempt = 0; !code->is_valid && attempt < 100; ++attempt)
+        for (u32 attempt = 0; !code->is_valid && attempt < 100; ++attempt)
         {
             win32_load_code(code);
             Sleep(100);
@@ -314,14 +315,14 @@ bool win32_try_update_code(Win32Code* code)
 
 void cat_strings(size_t a_size, char* a, size_t b_size, char* b, size_t dest_count, char* dest)
 {
-    for (int cindex = 0; cindex < a_size; ++cindex) *dest++ = *a++;
-    for (int cindex = 0; cindex < b_size; ++cindex) *dest++ = *b++;
+    for (u32 cindex = 0; cindex < a_size; ++cindex) *dest++ = *a++;
+    for (u32 cindex = 0; cindex < b_size; ++cindex) *dest++ = *b++;
     *dest++ = 0;
 }
 
-int32_t str_length(char* s)
+i32 str_length(char* s)
 {
-    int32_t count = 0;
+    i32 count = 0;
     while (*s++) ++count;
     return count;
 }
@@ -360,7 +361,7 @@ int main(int argc, char* argv[])
     WorkQueue queue = {};
     queue.semaphore = CreateSemaphoreEx(0, 0, THREAD_COUNT, 0, 0, SEMAPHORE_ALL_ACCESS);
 
-    for (uint32_t i = 0; i < THREAD_COUNT; ++i)
+    for (u32 i = 0; i < THREAD_COUNT; ++i)
     {
         unsigned long thread_id;
         auto handle = CreateThread(0, 0, win32_thread_proc, &queue, 0, &thread_id);
@@ -512,19 +513,19 @@ int main(int argc, char* argv[])
             game.update_and_render(&game_memory);
         }
         
-        float dt = 0.0166f;
+        f32 dt = 0.0166f;
         
         DWORD play_cursor, write_cursor;
         if (SUCCEEDED(sound_info.buffer->GetCurrentPosition(&play_cursor, &write_cursor)))
         {
             // TODO(selina): Documentation pass - comment all of the stuff in this scope block
             
-            DWORD safety_bytes = (int)((float)(sound_info.bytes_per_sample * sound_info.samples_per_second) * dt * 1);
+            DWORD safety_bytes = (i32)((f32)(sound_info.bytes_per_sample * sound_info.samples_per_second) * dt * 1);
             safety_bytes -= safety_bytes % sound_info.bytes_per_sample;
 
             DWORD to_lock = (sound_info.sample_index * sound_info.bytes_per_sample) % sound_info.buffer_size;
 
-            DWORD expected_bytes = (DWORD)((float)(sound_info.bytes_per_sample * sound_info.samples_per_second) * dt);
+            DWORD expected_bytes = (DWORD)((f32)(sound_info.bytes_per_sample * sound_info.samples_per_second) * dt);
             expected_bytes -= expected_bytes % sound_info.bytes_per_sample;
 
             DWORD expected_boundary = play_cursor + expected_bytes;
@@ -591,7 +592,7 @@ int main(int argc, char* argv[])
         LARGE_INTEGER current_counter;
         QueryPerformanceCounter(&current_counter);
 
-        last_dt = min(.1f, (float)(current_counter.QuadPart - last_counter.QuadPart) / frequency_counter);
+        last_dt = min(.1f, (f32)(current_counter.QuadPart - last_counter.QuadPart) / frequency_counter);
         last_counter = current_counter;
     }
 

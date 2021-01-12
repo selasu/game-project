@@ -1,21 +1,19 @@
-#include "platform/platform.h"
 #include "types.h"
-#include "asset/wav.h"
-
-#include <stdint.h>
+#include "wav.h"
+#include "platform/platform.h"
 
 struct SoundBuffer
 {
-    int32_t samples_per_second;
-    int32_t sample_count;
+    i32 samples_per_second;
+    i32 sample_count;
 
-    int16_t* samples;
+    i16* samples;
 };
 
 struct PlayingSound
 {
     LoadedSound sound_data;
-    int32_t     samples_played;
+    i32         samples_played;
 
     v2   volume;
     bool looping;

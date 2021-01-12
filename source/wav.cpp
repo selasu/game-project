@@ -1,16 +1,16 @@
 #include "wav.h"
-#include "../util/assert.h"
+#include "util/assert.h"
 
 #pragma pack(push, 1)
 
 struct WAVHeader 
 {
-    uint32_t ckID;
-    uint32_t cksize;
-    uint32_t WAVEID;
+    u32 ckID;
+    u32 cksize;
+    u32 WAVEID;
 };
 
-#define id(w, x, y, z) (((uint32_t)(w) << 0) | ((uint32_t)(x) << 8) | ((uint32_t)(y) << 16) | ((uint32_t)(z) << 24))
+#define id(w, x, y, z) (((u32)(w) << 0) | ((u32)(x) << 8) | ((u32)(y) << 16) | ((u32)(z) << 24))
 enum WAVid
 {
     fmt  = id('f', 'm', 't', ' '),
@@ -21,22 +21,22 @@ enum WAVid
 
 struct WAVChunk
 {
-    uint32_t ckID;
-    uint32_t cksize;
+    u32 ckID;
+    u32 cksize;
 };
 
 struct WAVfmt
 {
-    uint16_t wFormatTag;
-    uint16_t nChannels;
-    uint32_t nSamplesPerSec;
-    uint32_t nAvgBytesPerSec;
-    uint16_t nBlockAlign;
-    uint16_t wBitsPerSample;
-    uint16_t cbSize;
-    uint16_t wValidBitsPerSample;
-    uint32_t dwChannelMask;
-    uint8_t  SubFormat[16];
+    u16 wFormatTag;
+    u16 nChannels;
+    u32 nSamplesPerSec;
+    u32 nAvgBytesPerSec;
+    u16 nBlockAlign;
+    u16 wBitsPerSample;
+    u16 cbSize;
+    u16 wValidBitsPerSample;
+    u32 dwChannelMask;
+    u8  SubFormat[16];
 };
 
 #pragma pack(pop)
@@ -50,13 +50,13 @@ LoadedSound load_wav(void* data)
     ASSERT(header->WAVEID == WAVid::wave);
 
     // NOTE(selina): Data to extract from file
-    uint32_t channel_count;
-    uint32_t samples_size;
-    int16_t* samples;
+    u32 channel_count;
+    u32 samples_size;
+    i16* samples;
 
     for (
-        uint8_t* it = (uint8_t*)(header + 1); 
-        it < (uint8_t*)(header + 1) + header->cksize - 4; 
+        u8* it = (u8*)(header + 1); 
+        it < (u8*)(header + 1) + header->cksize - 4; 
         it += sizeof(WAVChunk) + ((((WAVChunk*)it)->cksize + 1) & ~-1)
     )
     {
@@ -64,7 +64,7 @@ LoadedSound load_wav(void* data)
         {
             case WAVid::fmt:
             {
-                auto fmt = (WAVfmt*)(it + sizeof(WAVChunk));
+                WAVfmt* fmt = (WAVfmt*)(it + sizeof(WAVChunk));
 
                 ASSERT(fmt->wFormatTag == 1); // PCM only
                 ASSERT(fmt->nSamplesPerSec == 44100);
@@ -86,7 +86,7 @@ LoadedSound load_wav(void* data)
     ASSERT(channel_count && samples && samples_size);
 
     sound.channel_count = channel_count;
-    sound.sample_count  = samples_size / (channel_count * sizeof(int16_t));
+    sound.sample_count  = samples_size / (channel_count * sizeof(i16));
     sound.samples       = samples;
 
     return sound;
