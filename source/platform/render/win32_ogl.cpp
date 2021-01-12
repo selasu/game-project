@@ -3,7 +3,6 @@
 #pragma comment(lib, "opengl32.lib")
 
 #include <windows.h>
-
 #include <stdio.h>
 
 #include "win32_render.h"
@@ -61,10 +60,10 @@ extern "C" __declspec(dllexport) WIN32_LOAD_RENDERER(win32_load_renderer)
         wc.lpfnWndProc   = DefWindowProc;
         wc.lpszClassName = "SelengineWGLLoader";
         wc.hInstance     = GetModuleHandle(0);
-        if (!RegisterClassExA(&wc)) DEV_ASSERT(false)
+        if (!RegisterClassExA(&wc)) ASSERT(false);
 
         auto handle = CreateWindowExA(0, wc.lpszClassName, wc.lpszClassName, 0, 0, 0, 0, 0, 0, 0, wc.hInstance, 0);
-        if (!handle) DEV_ASSERT(false)
+        if (!handle) ASSERT(false);
         auto dc = GetDC(handle);
 
         PIXELFORMATDESCRIPTOR pfd;
@@ -78,10 +77,10 @@ extern "C" __declspec(dllexport) WIN32_LOAD_RENDERER(win32_load_renderer)
         pfd.iLayerType   = PFD_MAIN_PLANE;
 
         auto format = ChoosePixelFormat(dc, &pfd);
-        if (!format || !SetPixelFormat(dc, format, &pfd)) DEV_ASSERT(false)
+        if (!format || !SetPixelFormat(dc, format, &pfd)) ASSERT(false);
 
         auto hglrc = wglCreateContext(dc);
-        if (!hglrc || !wglMakeCurrent(dc, hglrc)) DEV_ASSERT(false)
+        if (!hglrc || !wglMakeCurrent(dc, hglrc)) ASSERT(false);
 
         wglChoosePixelFormatARB = (wglChoosePixelFormatARB_t*)wglGetProcAddress("wglChoosePixelFormatARB");
         wglCreateContextAttribsARB = (wglCreateContextAttribsARB_t*)wglGetProcAddress("wglCreateContextAttribsARB");
@@ -110,7 +109,7 @@ extern "C" __declspec(dllexport) WIN32_LOAD_RENDERER(win32_load_renderer)
     int format;
     unsigned int formatc;
     wglChoosePixelFormatARB(device_context, format_attr, 0, 1, &format, &formatc);
-    if (!formatc) DEV_ASSERT(false)
+    if (!formatc) ASSERT(false);
 
     PIXELFORMATDESCRIPTOR pfd;
     DescribePixelFormat(device_context, format, sizeof(pfd), &pfd);
@@ -124,7 +123,7 @@ extern "C" __declspec(dllexport) WIN32_LOAD_RENDERER(win32_load_renderer)
     };
 
     auto hglrc = wglCreateContextAttribsARB(device_context, 0, ogl_attr);
-    if (!hglrc || !wglMakeCurrent(device_context, hglrc)) DEV_ASSERT(false)
+    if (!hglrc || !wglMakeCurrent(device_context, hglrc)) ASSERT(false);
 
     OpenGL* opengl = (OpenGL*)win32_alloc(sizeof(OpenGL));
     if (opengl)

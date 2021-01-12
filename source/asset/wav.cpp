@@ -46,8 +46,8 @@ LoadedSound load_wav(void* data)
     LoadedSound sound = {};
 
     WAVHeader *header = (WAVHeader*)data;
-    DEV_ASSERT(header->ckID == WAVid::riff);
-    DEV_ASSERT(header->WAVEID == WAVid::wave);
+    ASSERT(header->ckID == WAVid::riff);
+    ASSERT(header->WAVEID == WAVid::wave);
 
     // NOTE(selina): Data to extract from file
     uint32_t channel_count;
@@ -66,11 +66,11 @@ LoadedSound load_wav(void* data)
             {
                 auto fmt = (WAVfmt*)(it + sizeof(WAVChunk));
 
-                DEV_ASSERT(fmt->wFormatTag == 1); // PCM only
-                DEV_ASSERT(fmt->nSamplesPerSec == 44100);
-                DEV_ASSERT(fmt->wBitsPerSample == 16);
-                DEV_ASSERT(fmt->nBlockAlign == (sizeof(int16_t)*fmt->nChannels));
-                DEV_ASSERT(fmt->nChannels == 1 || fmt->nChannels == 2);
+                ASSERT(fmt->wFormatTag == 1); // PCM only
+                ASSERT(fmt->nSamplesPerSec == 44100);
+                ASSERT(fmt->wBitsPerSample == 16);
+                ASSERT(fmt->nBlockAlign == (sizeof(int16_t)*fmt->nChannels));
+                ASSERT(fmt->nChannels == 1 || fmt->nChannels == 2);
 
                 channel_count = fmt->nChannels;
             } break;
@@ -83,7 +83,7 @@ LoadedSound load_wav(void* data)
         }
     }
 
-    DEV_ASSERT(channel_count && samples && samples_size)
+    ASSERT(channel_count && samples && samples_size);
 
     sound.channel_count = channel_count;
     sound.sample_count  = samples_size / (channel_count * sizeof(int16_t));

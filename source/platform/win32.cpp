@@ -3,13 +3,12 @@
 #pragma comment(lib, "winmm.lib")
 
 #include <functional>
-#include <stdio.h>
 #include <windows.h>
 #include <dsound.h>
+#include <stdio.h>
 
 #include "../util/assert.h"
 #include "../game.h"
-
 #include "render/win32_render.h"
 
 #define QUEUE_SIZE 128
@@ -90,7 +89,7 @@ PLATFORM_ALLOCATE_MEMORY(win32_allocate_memory)
 PLATFORM_ADD_JOB(win32_add_job)
 {
     uint32_t new_write_index = (queue->next_write_index + 1) % array_count(queue->jobs);
-    DEV_ASSERT(new_write_index != queue->next_read_index);
+    ASSERT(new_write_index != queue->next_read_index);
 
     auto job = queue->jobs + queue->next_write_index;
     job->callback = callback;
@@ -107,14 +106,14 @@ PLATFORM_LOAD_FILE(win32_read_file)
     void* data = 0;
 
     HANDLE file = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
-    DEV_ASSERT(file != INVALID_HANDLE_VALUE)
+    ASSERT(file != INVALID_HANDLE_VALUE);
 
     DWORD fsize = GetFileSize(file, 0);
     data = win32_allocate_memory(fsize);
 
     DWORD read;
     ReadFile(file, data, fsize, &read, 0);
-    DEV_ASSERT(read == fsize)
+    ASSERT(read == fsize);
 
     return data;
 }
@@ -141,6 +140,7 @@ LRESULT __stdcall win32_callback(HWND handle, UINT msg, WPARAM wparam, LPARAM lp
     default:
         result = DefWindowProc(handle, msg, wparam, lparam);
     }
+
     return result;
 }
 
@@ -379,20 +379,18 @@ int main(int argc, char* argv[])
     win32_add_job(&queue, test_job, "Test #4");
     win32_add_job(&queue, test_job, "Test #5");
 
-    // Create our normal window now that we have the appropriate WGL functions
-
     WNDCLASSEXA wc = {};
     wc.cbSize        = sizeof(WNDCLASSEX);
     wc.style         = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
     wc.lpfnWndProc   = win32_callback;
     wc.lpszClassName = "SelengineWindowClass";
     wc.hInstance     = GetModuleHandle(0);
-
-    if (!RegisterClassExA(&wc)) DEV_ASSERT(false)
+    ASSERT(RegisterClassExA(&wc));
 
     auto handle = CreateWindowExA(0, wc.lpszClassName, "Test Title", WS_OVERLAPPEDWINDOW | WS_VISIBLE,
         CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, CW_USEDEFAULT, 0, 0, wc.hInstance, 0);
-    if (!handle) DEV_ASSERT(false)
+    ASSERT(handle);
+
     auto device_context = GetDC(handle);
 
     // NOTE(selina): Load game game_code
@@ -423,7 +421,7 @@ int main(int argc, char* argv[])
 
     win32_load_code(&renderer_code);
 
-    DEV_ASSERT(game_code.is_valid && renderer_code.is_valid)
+    ASSERT(game_code.is_valid && renderer_code.is_valid);
 
     RenderAPI* render_api = renderer.win32_load_renderer(GetDC(handle));
 
@@ -449,7 +447,6 @@ int main(int argc, char* argv[])
             wave_format.nBlockAlign     = (wave_format.nChannels * wave_format.wBitsPerSample) / 8;
             wave_format.nAvgBytesPerSec = wave_format.nSamplesPerSec * wave_format.nBlockAlign;
 
-            // NOTE(selina): Create primary buffer
             if (SUCCEEDED(dsound->SetCooperativeLevel(handle, DSSCL_PRIORITY)))
             {
                 LPDIRECTSOUNDBUFFER buffer;
@@ -478,7 +475,7 @@ int main(int argc, char* argv[])
 
     // NOTE(selina): Clear the buffer before looping
     win32_clear_sound_buffer(&sound_info);
-    DEV_ASSERT(SUCCEEDED(sound_info.buffer->Play(0, 0, DSBPLAY_LOOPING)))
+    ASSERT(SUCCEEDED(sound_info.buffer->Play(0, 0, DSBPLAY_LOOPING)));
     int16_t* samples = (int16_t*)VirtualAlloc(0, sound_info.buffer_size, MEM_RESERVE | MEM_COMMIT, PAGE_READWRITE);
 
     SoundBuffer sound_buffer = {};
@@ -568,7 +565,7 @@ int main(int argc, char* argv[])
             if (to_write)
             {
                 sound_buffer.sample_count = to_write / sound_info.bytes_per_sample;
-                DEV_ASSERT(to_write % 4 == 0)
+                ASSERT(to_write % 4 == 0);
 
                 game.get_sound_samples(&game_memory, &sound_buffer);
                 win32_fill_sound_buffer(&sound_info, &sound_buffer, to_lock, to_write);

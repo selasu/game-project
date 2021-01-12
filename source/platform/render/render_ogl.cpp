@@ -81,7 +81,7 @@ GLuint opengl_create_program(OpenGL* opengl, char* vertex_code, char* fragment_c
         opengl->glGetShaderInfoLog(fragment_id, sizeof(fragment_error), &ignored, fragment_error);
         opengl->glGetProgramInfoLog(program_id, sizeof(program_error), &ignored, program_error);
 
-        DEV_ASSERTM(false, "Shader validation failed")
+        ASSERT(!"Shader validation failed");
     }
 
     return program_id;
