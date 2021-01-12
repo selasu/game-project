@@ -1,5 +1,5 @@
 #include "render_ogl.h"
-#include "../../util/assert.h"
+#include "../util/assert.h"
 
 #define acount(a) (sizeof(a) / sizeof((a)[0]))
 

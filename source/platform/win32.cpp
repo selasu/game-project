@@ -5,11 +5,10 @@
 #include <functional>
 #include <windows.h>
 #include <dsound.h>
-#include <stdio.h>
 
-#include "../util/assert.h"
 #include "../game.h"
-#include "render/win32_render.h"
+#include "../util/assert.h"
+#include "../render/win32_render.h"
 
 #define QUEUE_SIZE 128
 #define THREAD_COUNT 8
