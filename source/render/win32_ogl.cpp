@@ -38,6 +38,8 @@ void* win32_alloc(size_t size)
 extern "C" __declspec(dllexport) RENDER_BEGIN_FRAME(win32_begin_frame)
 {
     OpenGL* opengl = (OpenGL*)render_api;
+
+    opengl_begin_frame(opengl, draw_space);
 }
 
 extern "C" __declspec(dllexport) RENDER_END_FRAME(win32_end_frame)

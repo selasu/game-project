@@ -327,6 +327,19 @@ i32 str_length(char* s)
     return count;
 }
 
+v2u win32_get_dimension(HWND handle)
+{
+    v2u dimension;
+
+    RECT rect;
+    GetClientRect(handle, &rect);
+
+    dimension.x = (u32)(rect.right - rect.left);
+    dimension.y = (u32)(rect.bottom - rect.top);
+
+    return dimension;
+}
+
 int main(int argc, char* argv[])
 {
     char exe_path[MAX_PATH_LENGTH];
@@ -508,10 +521,9 @@ int main(int argc, char* argv[])
         }
 
         // NOTE(selina): Run game for frame
-        if (game.update_and_render)
-        {
-            game.update_and_render(&game_memory);
-        }
+        game.update_and_render(&game_memory);
+
+        renderer.win32_begin_frame(render_api, win32_get_dimension(handle));
         
         f32 dt = 0.0166f;
         

@@ -1,6 +1,8 @@
 #include "render_ogl.h"
 #include "../util/assert.h"
 
+#include <stdio.h>
+
 #define acount(a) (sizeof(a) / sizeof((a)[0]))
 
 #define GL_ELEMENT_ARRAY_BUFFER  0x8893
@@ -85,6 +87,12 @@ GLuint opengl_create_program(OpenGL* opengl, char* vertex_code, char* fragment_c
     }
 
     return program_id;
+}
+
+void opengl_begin_frame(OpenGL* opengl, v2u draw_space)
+{
+    printf("%u, %u\n", draw_space.width, draw_space.height);
+    glViewport(0, 0, draw_space.width, draw_space.height);
 }
 
 void opengl_end_frame(OpenGL* opengl)

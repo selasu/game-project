@@ -72,5 +72,6 @@ struct OpenGL
     opengl_function(glUseProgram);
 };
 
+void opengl_begin_frame(OpenGL* opengl, v2u draw_space);
 void opengl_end_frame(OpenGL* opengl);
 void init_opengl(OpenGL* opengl);

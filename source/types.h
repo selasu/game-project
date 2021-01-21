@@ -29,6 +29,10 @@ union v2u
     {
         u32 x, y;
     };
+    struct
+    {
+        u32 width, height;
+    };
 };
 
 #if COMPILER_MSVC

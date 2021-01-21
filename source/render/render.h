@@ -1,11 +1,13 @@
 #pragma once
 
+#include "../types.h"
+
 struct RenderAPI
 {
     void* platform;
 };
 
-#define RENDER_BEGIN_FRAME(name) void name(RenderAPI* render_api)
+#define RENDER_BEGIN_FRAME(name) void name(RenderAPI* render_api, v2u draw_space)
 typedef RENDER_BEGIN_FRAME(render_begin_frame_t);
 
 #define RENDER_END_FRAME(name) void name(RenderAPI* render_api)
