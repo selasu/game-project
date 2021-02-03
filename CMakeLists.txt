@@ -16,6 +16,7 @@ target_compile_definitions(sel_opengl
 add_library(sel_game SHARED
     source/game.cpp
     source/wav.cpp
+    source/render/render.cpp
 )
 
 target_compile_definitions(sel_game

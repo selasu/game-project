@@ -1,5 +1,5 @@
 #include "wav.h"
-#include "util/assert.h"
+#include "assert.h"
 
 #pragma pack(push, 1)
 

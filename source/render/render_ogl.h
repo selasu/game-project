@@ -43,7 +43,16 @@ typedef void type_glUseProgram(GLuint program);
 
 struct OpenGL
 {
-    RenderAPI header;
+    RenderAPI   header;
+    RenderState render_state;
+
+    u32 max_vertex_count;
+    u32 vertex_count;
+    Vertex* vertices;
+
+    u32 max_index_count;
+    u32 index_count;
+    u16* indices;
 
     GLuint vao;
     GLuint vbo;
@@ -72,6 +81,6 @@ struct OpenGL
     opengl_function(glUseProgram);
 };
 
-void opengl_begin_frame(OpenGL* opengl, v2u draw_space);
-void opengl_end_frame(OpenGL* opengl);
+RenderState* opengl_begin_frame(OpenGL* opengl, v2u draw_space);
+void opengl_end_frame(OpenGL* opengl, RenderState* render_state);
 void init_opengl(OpenGL* opengl);

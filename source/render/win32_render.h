@@ -5,7 +5,7 @@
 #include <windows.h>
 #include "render.h"
 
-#define WIN32_LOAD_RENDERER(name) RenderAPI* name(HDC device_context)
+#define WIN32_LOAD_RENDERER(name) RenderAPI* name(HDC device_context, RenderParameters* render_parameters)
 typedef WIN32_LOAD_RENDERER(win32_load_renderer_t);
 
 static char* win32_render_functions[] =

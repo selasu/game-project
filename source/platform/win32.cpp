@@ -6,9 +6,11 @@
 #include <windows.h>
 #include <dsound.h>
 
+#include <stdio.h>
+
 #include "../types.h"
 #include "../game.h"
-#include "../util/assert.h"
+#include "../assert.h"
 #include "../render/win32_render.h"
 
 #define QUEUE_SIZE 128
@@ -436,7 +438,10 @@ int main(int argc, char* argv[])
 
     ASSERT(game_code.is_valid && renderer_code.is_valid);
 
-    RenderAPI* render_api = renderer.win32_load_renderer(GetDC(handle));
+    RenderParameters params = {};
+    params.max_quads_per_frame = (1 << 20);
+
+    RenderAPI* render_api = renderer.win32_load_renderer(GetDC(handle), &params);
 
     // NOTE(selina): Load audio engine
     Win32SoundInfo sound_info = {};
@@ -520,10 +525,10 @@ int main(int argc, char* argv[])
             DispatchMessage(&msg);
         }
 
-        // NOTE(selina): Run game for frame
-        game.update_and_render(&game_memory);
+        RenderState* render_state = renderer.win32_begin_frame(render_api, win32_get_dimension(handle));
 
-        renderer.win32_begin_frame(render_api, win32_get_dimension(handle));
+        // NOTE(selina): Run game for frame
+        game.update_and_render(&game_memory, render_state);
         
         f32 dt = 0.0166f;
         
@@ -585,7 +590,7 @@ int main(int argc, char* argv[])
         }
         
         // NOTE(selina): Display frame
-        renderer.win32_end_frame(render_api);
+        renderer.win32_end_frame(render_api, render_state);
 
         if (win32_try_update_code(&game_code))
         {

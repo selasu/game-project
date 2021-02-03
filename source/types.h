@@ -15,7 +15,7 @@ typedef double   f64;
 
 union v2
 {
-    float E[2];
+    f32 E[2];
     struct
     {
         f32 x, y;
@@ -24,7 +24,7 @@ union v2
 
 union v2u
 {
-    uint32_t E[2];
+    u32 E[2];
     struct 
     {
         u32 x, y;
@@ -32,6 +32,50 @@ union v2u
     struct
     {
         u32 width, height;
+    };
+};
+
+union v3
+{
+    f32 E[3];
+    struct
+    {
+        f32 x, y, z;
+    };
+};
+
+union v3u
+{
+    u32 E[3];
+    struct
+    {
+        u32 x, y, z;
+    };
+};
+
+union v4
+{
+    f32 E[4];
+    struct
+    {
+        f32 w, x, y, z;
+    };
+    struct
+    {
+        f32 r, g, b, a;
+    };
+};
+
+union v4u
+{
+    u32 E[4];
+    struct
+    {
+        u32 w, x, y, z;
+    };
+    struct
+    {
+        u32 r, g, b, a;
     };
 };
 

@@ -2,7 +2,7 @@
 
 extern "C" __declspec(dllexport) GAME_UPDATE_AND_RENDER(game_update_and_render)
 {
-    
+    push_quad(v3{-0.5f, -0.5f, 0.0f}, v3{-0.5f,  0.5f, 0.0f}, v3{0.5f,  0.5f, 0.0f}, v3{0.5f, -0.5f, 0.0f}, render_state);
 }
 
 extern "C" __declspec(dllexport) GAME_GET_SOUND_SAMPLES(game_get_sound_samples)
@@ -48,7 +48,12 @@ extern "C" __declspec(dllexport) GAME_GET_SOUND_SAMPLES(game_get_sound_samples)
         {
             PlayingSound* sound = *sound_ptr;
 
-            if (!sound->active) continue;
+            // NOTE(selina): Don't play inactive sounds
+            if (!sound->active) 
+            {
+                sound_ptr = &sound->next;
+                continue;
+            }
 
             i32 sample = (i32)(sound->samples_played * sound->sound_data.channel_count);
 

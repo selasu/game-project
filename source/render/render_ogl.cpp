@@ -1,13 +1,12 @@
 #include "render_ogl.h"
-#include "../util/assert.h"
-
-#include <stdio.h>
+#include "../assert.h"
 
 #define acount(a) (sizeof(a) / sizeof((a)[0]))
 
 #define GL_ELEMENT_ARRAY_BUFFER  0x8893
 #define GL_ARRAY_BUFFER          0x8892
 #define GL_STATIC_DRAW           0x88E4
+#define GL_STREAM_DRAW           0x88E0
 
 #define GL_FRAGMENT_SHADER  0x8B30
 #define GL_VERTEX_SHADER    0x8B31
@@ -32,18 +31,6 @@ char* fragment_source = R"FOO(
        FragColor = vec4(1.0f, 0.0f, 0.0f, 1.0f);
     }
     )FOO";
-
-constexpr float vertices[] = {
-    0.5f,  0.5f, 0.0f,  // top right
-    0.5f, -0.5f, 0.0f,  // bottom right
-    -0.5f, -0.5f, 0.0f, // bottom left
-    -0.5f,  0.5f, 0.0f  // top left
-};
-
-constexpr unsigned int indices[] = { 
-    0, 1, 3,  // first triangle
-    1, 2, 3   // second triangle
-};
 
 GLuint opengl_create_program(OpenGL* opengl, char* vertex_code, char* fragment_code)
 {
@@ -89,33 +76,45 @@ GLuint opengl_create_program(OpenGL* opengl, char* vertex_code, char* fragment_c
     return program_id;
 }
 
-void opengl_begin_frame(OpenGL* opengl, v2u draw_space)
+RenderState* opengl_begin_frame(OpenGL* opengl, v2u draw_space)
 {
-    printf("%u, %u\n", draw_space.width, draw_space.height);
-    glViewport(0, 0, draw_space.width, draw_space.height);
+    RenderState* render_state = &opengl->render_state;
+
+    render_state->draw_region = draw_space;
+
+    render_state->indices = opengl->indices;
+    render_state->index_count = 0;
+    render_state->max_index_count = opengl->max_index_count;
+
+    render_state->vertices = opengl->vertices;
+    render_state->vertex_count = 0;
+    render_state->max_vertex_count = opengl->max_vertex_count;
+
+    return render_state;
 }
 
-void opengl_end_frame(OpenGL* opengl)
+void opengl_end_frame(OpenGL* opengl, RenderState* render_state)
 {
-    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-
     opengl->glUseProgram(opengl->program);
     
     opengl->glBindVertexArray(opengl->vao);
 
     opengl->glBindBuffer(GL_ARRAY_BUFFER, opengl->vbo);
-    opengl->glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    opengl->glBufferData(GL_ARRAY_BUFFER, render_state->vertex_count * sizeof(Vertex), render_state->vertices, GL_STREAM_DRAW);
     
     opengl->glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, opengl->ebo);
-    opengl->glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+    opengl->glBufferData(GL_ELEMENT_ARRAY_BUFFER, render_state->index_count * sizeof(u16), render_state->indices, GL_STREAM_DRAW);
 
-    opengl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
+    opengl->glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)0);
     opengl->glEnableVertexAttribArray(0);
 
     opengl->glBindBuffer(GL_ARRAY_BUFFER, 0);
 
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+    glViewport(0, 0, render_state->draw_region.width, render_state->draw_region.height);
+    glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+    glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, 0);
 }
 
 void init_opengl(OpenGL* opengl)

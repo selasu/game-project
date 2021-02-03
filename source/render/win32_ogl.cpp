@@ -6,7 +6,7 @@
 
 #include "render_ogl.h"
 #include "win32_render.h"
-#include "../util/assert.h"
+#include "../assert.h"
 
 // See https://www.opengl.org/registry/specs/ARB/wgl_create_context.txt for all values
 #define WGL_CONTEXT_MAJOR_VERSION_ARB    0x2091
@@ -39,14 +39,14 @@ extern "C" __declspec(dllexport) RENDER_BEGIN_FRAME(win32_begin_frame)
 {
     OpenGL* opengl = (OpenGL*)render_api;
 
-    opengl_begin_frame(opengl, draw_space);
+    return opengl_begin_frame(opengl, draw_space);
 }
 
 extern "C" __declspec(dllexport) RENDER_END_FRAME(win32_end_frame)
 {
     OpenGL* opengl = (OpenGL*)render_api;
     
-    opengl_end_frame(opengl);
+    opengl_end_frame(opengl, render_state);
     SwapBuffers(wglGetCurrentDC());
 }
 
@@ -127,6 +127,13 @@ extern "C" __declspec(dllexport) WIN32_LOAD_RENDERER(win32_load_renderer)
     ASSERT(hglrc && wglMakeCurrent(device_context, hglrc));
 
     OpenGL* opengl = (OpenGL*)win32_alloc(sizeof(OpenGL));
+    
+    opengl->max_vertex_count = render_parameters->max_quads_per_frame * 4;
+    opengl->vertices = (Vertex*)win32_alloc(opengl->max_vertex_count * sizeof(Vertex));
+
+    opengl->max_index_count = render_parameters->max_quads_per_frame * 6;
+    opengl->indices = (u16*)win32_alloc(opengl->max_index_count * sizeof(u16));
+
     if (opengl)
     {
         #define load_function(name) opengl->name = (type_##name *)wglGetProcAddress(#name)

@@ -1,5 +1,6 @@
 #include "types.h"
 #include "wav.h"
+#include "render/render.h"
 #include "platform/platform.h"
 
 struct SoundBuffer
@@ -41,7 +42,7 @@ static char* game_functions[] =
     "game_get_sound_samples"
 };
 
-#define GAME_UPDATE_AND_RENDER(name) void name(GameMemory* memory)
+#define GAME_UPDATE_AND_RENDER(name) void name(GameMemory* memory, RenderState* render_state)
 typedef GAME_UPDATE_AND_RENDER(game_update_and_render_t);
 
 #define GAME_GET_SOUND_SAMPLES(name) void name(GameMemory* memory, SoundBuffer* sound_buffer)
