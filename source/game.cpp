@@ -2,11 +2,6 @@
 
 extern "C" __declspec(dllexport) GAME_UPDATE_AND_RENDER(game_update_and_render)
 {
-    push_quad(v3{-0.5f, -0.5f, 0.0f}, v3{-0.5f,  0.5f, 0.0f}, v3{0.5f,  0.5f, 0.0f}, v3{0.5f, -0.5f, 0.0f}, render_state);
-}
-
-extern "C" __declspec(dllexport) GAME_GET_SOUND_SAMPLES(game_get_sound_samples)
-{
     PlatformAPI* platform = &memory->platform_api;
     Game* game_state      = memory->game_state;
 
@@ -35,6 +30,14 @@ extern "C" __declspec(dllexport) GAME_GET_SOUND_SAMPLES(game_get_sound_samples)
         game_state->audio->master_volume = v2{1.0f, 1.0f};
         game_state->audio->first_playing = sound;
     }
+
+    push_quad(v3{-0.5f, -0.5f, 0.0f}, v3{-0.5f,  0.5f, 0.0f}, v3{0.5f,  0.5f, 0.0f}, v3{0.5f, -0.5f, 0.0f}, render_state);
+    push_quad(v3{-0.9f, -0.9f, 0.0f}, v3{-0.9f,  -0.8f, 0.0f}, v3{-0.8f,  -0.8f, 0.0f}, v3{-0.8f, -0.9f, 0.0f}, render_state);
+}
+
+extern "C" __declspec(dllexport) GAME_GET_SOUND_SAMPLES(game_get_sound_samples)
+{
+    Game* game_state = memory->game_state;
 
     Audio* audio = game_state->audio;
     i16* at      = sound_buffer->samples;

@@ -3,6 +3,7 @@
 #if defined(_WIN32) || defined(_WIN64)
 
 #include <windows.h>
+
 #include "render.h"
 
 #define WIN32_LOAD_RENDERER(name) RenderAPI* name(HDC device_context, RenderParameters* render_parameters)

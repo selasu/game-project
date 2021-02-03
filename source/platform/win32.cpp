@@ -2,10 +2,8 @@
 
 #pragma comment(lib, "winmm.lib")
 
-#include <functional>
 #include <windows.h>
 #include <dsound.h>
-
 #include <stdio.h>
 
 #include "../types.h"

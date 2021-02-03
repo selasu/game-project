@@ -114,7 +114,7 @@ void opengl_end_frame(OpenGL* opengl, RenderState* render_state)
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
-    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, 0);
+    glDrawElements(GL_TRIANGLES, render_state->index_count * sizeof(u16), GL_UNSIGNED_SHORT, 0);
 }
 
 void init_opengl(OpenGL* opengl)
