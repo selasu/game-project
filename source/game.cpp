@@ -1,5 +1,7 @@
 #include "game.h"
 
+#include "png.h"
+
 extern "C" __declspec(dllexport) GAME_UPDATE_AND_RENDER(game_update_and_render)
 {
     PlatformAPI* platform = &memory->platform_api;
@@ -9,16 +11,18 @@ extern "C" __declspec(dllexport) GAME_UPDATE_AND_RENDER(game_update_and_render)
     {
         // TODO(selina): Replace all this with a more robust system for initialising memory and loading assets
 
+        LoadedPNG png = load_png(platform->load_file("C:\\projects\\game\\resources\\test.png"));
+
         game_state = memory->game_state = (Game*)platform->allocate_memory(sizeof(game_state));
 
         PlayingSound* sound = (PlayingSound*)platform->allocate_memory(sizeof(PlayingSound));
-        sound->sound_data = load_wav(platform->load_file("C:\\projects\\game\\resources\\acapella.wav"));
+        sound->sound_data = load_wav(platform->load_file("C:\\projects\\game\\resources\\acapella.wav").data);
         sound->volume     = v2{1.0f, 1.0f};
         sound->active     = true;
         sound->looping    = false;
 
         PlayingSound* sound2 = (PlayingSound*)platform->allocate_memory(sizeof(PlayingSound));
-        sound2->sound_data = load_wav(platform->load_file("C:\\projects\\game\\resources\\instrumental.wav"));
+        sound2->sound_data = load_wav(platform->load_file("C:\\projects\\game\\resources\\instrumental.wav").data);
         sound2->volume     = v2{0.25f, 0.25f};
         sound2->active     = true;
         sound2->looping    = false;

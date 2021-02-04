@@ -32,6 +32,22 @@ char* fragment_source = R"FOO(
     }
     )FOO";
 
+GLuint opengl_create_texture(OpenGL* opengl, u32 width, u32 height)
+{
+    GLuint texture = 0;
+
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+    return texture;
+}
+
 GLuint opengl_create_program(OpenGL* opengl, char* vertex_code, char* fragment_code)
 {
     GLuint vertex_id = opengl->glCreateShader(GL_VERTEX_SHADER);

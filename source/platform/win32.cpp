@@ -103,19 +103,21 @@ PLATFORM_ADD_JOB(win32_add_job)
 
 PLATFORM_LOAD_FILE(win32_read_file)
 {
-    void* data = 0;
+    FileContent file_content = {};
 
     HANDLE file = CreateFileA(filename, GENERIC_READ, FILE_SHARE_READ, 0, OPEN_EXISTING, 0, 0);
     ASSERT(file != INVALID_HANDLE_VALUE);
 
     DWORD fsize = GetFileSize(file, 0);
-    data = win32_allocate_memory(fsize);
+    file_content.data = win32_allocate_memory(fsize);
 
     DWORD read;
-    ReadFile(file, data, fsize, &read, 0);
+    ReadFile(file, file_content.data, fsize, &read, 0);
     ASSERT(read == fsize);
 
-    return data;
+    file_content.file_size = (u32)fsize;
+
+    return file_content;
 }
 
 LRESULT __stdcall win32_callback(HWND handle, UINT msg, WPARAM wparam, LPARAM lparam)
