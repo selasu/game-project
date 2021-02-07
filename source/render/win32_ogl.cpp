@@ -6,7 +6,7 @@
 
 #include "render_ogl.h"
 #include "win32_render.h"
-#include "../assert.h"
+#include "../macro_util.h"
 
 // See https://www.opengl.org/registry/specs/ARB/wgl_create_context.txt for all values
 #define WGL_CONTEXT_MAJOR_VERSION_ARB    0x2091

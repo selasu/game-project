@@ -11,7 +11,7 @@ extern "C" __declspec(dllexport) GAME_UPDATE_AND_RENDER(game_update_and_render)
     {
         // TODO(selina): Replace all this with a more robust system for initialising memory and loading assets
 
-        LoadedPNG png = load_png(platform->load_file("C:\\projects\\game\\resources\\test.png"));
+        LoadedPNG png = load_png(platform->load_file("C:\\projects\\game\\resources\\photoshop test.png"));
 
         game_state = memory->game_state = (Game*)platform->allocate_memory(sizeof(game_state));
 

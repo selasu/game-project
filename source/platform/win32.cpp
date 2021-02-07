@@ -8,21 +8,12 @@
 
 #include "../types.h"
 #include "../game.h"
-#include "../assert.h"
+#include "../macro_util.h"
 #include "../render/win32_render.h"
 
 #define QUEUE_SIZE 128
 #define THREAD_COUNT 8
 #define MAX_PATH_LENGTH 512
-
-// TODO(selina): Put this in another file
-#define array_count(arr) ((sizeof(arr) / sizeof((arr)[0])))
-#define zero_array(size, ptr) zero_size((size) * sizeof((ptr)[0]), (ptr))
-void zero_size(size_t size, void* ptr)
-{
-    u8* byte = (u8*)ptr;
-    while (--size) *byte++ = 0;
-}
 
 #define DIRECT_SOUND_CREATE(name) HRESULT __stdcall name(LPCGUID pcGuidDevice, LPDIRECTSOUND *ppDS, LPUNKNOWN pUnkOuter)
 typedef DIRECT_SOUND_CREATE(DirectSoundCreate_t);

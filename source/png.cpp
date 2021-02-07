@@ -1,5 +1,9 @@
 #include "png.h"
+#include "macro_util.h"
+#include "stream.h"
+
 #include <stdio.h>
+#include <stdlib.h>
 
 #pragma pack(push, 1)
 
@@ -42,26 +46,22 @@ struct PNGidatHeader
 
 #pragma pack(pop)
 
-struct StreamChunk 
+struct PNGHuffmanEntry
 {
-    void* data;
-    u32 data_size;
-
-    StreamChunk* next;
+    u16 symbol;
+    u16 bits_used;
 };
 
-struct StreamBuffer
+struct PNGHuffman
 {
-    void* data;
-    u32 data_size;
-
-    StreamChunk* first;
-    StreamChunk* last;
+    PNGHuffmanEntry* entries;
+    u32 entry_count;
 };
 
 #define FourCC(str) (((u32)(str[0]) << 0) | ((u32)(str[1]) << 8) | ((u32)(str[2]) << 16) | ((u32)(str[3]) << 24))
 
 static constexpr u8 png_signature[8] = {137, 80, 78, 71, 13, 10, 26, 10};
+static constexpr u32 HCLEN_translation_table[19] = {16, 17, 18, 0, 8, 7, 9, 6, 10, 5, 11, 4, 12, 3, 13, 2, 14, 1, 15};
 
 void flip_endian(u32* value)
 {
@@ -73,32 +73,28 @@ void flip_endian(u32* value)
             (v >> 24);
 }
 
-#define consume(file, type) (type*)consume_size(file, sizeof(type));
-void* consume_size(StreamBuffer* file, u32 size)
+PNGHuffman allocate_huffman(u32 max_code_length)
 {
-    void* data = 0;
+    ASSERT(max_code_length <= 16);
 
-    if (file->data_size == 0 && file->first)
-    {
-        StreamChunk* chunk = file->first;
-        file->data_size = chunk->data_size;
-        file->data = chunk->data;
-        file->first = chunk->next;
-    }
+    PNGHuffman huffman = {};
 
-    if (file->data_size >= size)
-    {
-        data = file->data;
-        file->data = (u8*)file->data + size;
-        file->data_size -= size;
-    }
-    else
-    {
-        fprintf(stderr, "File underflowed at [%u] size.\n", size);
-        file->data_size = 0;
-    }
+    huffman.entry_count = 1 << max_code_length;
+    huffman.entries = (PNGHuffmanEntry*)malloc(sizeof(PNGHuffmanEntry) * huffman.entry_count);
 
-    return data;
+    return huffman;
+}
+
+u32 decode_huffman(PNGHuffman* huffman, StreamBuffer* input)
+{
+    u32 result = 0;
+
+    return result;
+}
+
+void create_huffman(u32 input_size, u32* input, PNGHuffman* output)
+{
+
 }
 
 LoadedPNG load_png(FileContent file_content)
@@ -152,7 +148,7 @@ LoadedPNG load_png(FileContent file_content)
                     
                     case FourCC("IDAT"):
                     {
-                        fprintf(stdout, "Chunk: IDAT\n");
+                        fprintf(stdout, "Chunk: IDAT (%u)\n", chunk_header->length);
 
                         StreamChunk* chunk = new StreamChunk;
                         chunk->data_size = chunk_header->length;
@@ -167,8 +163,7 @@ LoadedPNG load_png(FileContent file_content)
 
         if (supported)
         {
-            fprintf(stdout, "Supported: {%u, %u}\n", width, height);
-            // NOTE(selina): zlib compression spec here: https://www.ietf.org/rfc/rfc1950.txt
+            // NOTE(selina): zlib compression spec here: https://www.ietf.org/rfc/rfc1951.txt
 
             PNGidatHeader* idat_header = consume(&compressed_data, PNGidatHeader);
 
@@ -182,7 +177,96 @@ LoadedPNG load_png(FileContent file_content)
 
             if (supported)
             {
+                fprintf(stdout, "Supported: {%u, %u}\n", width, height);
 
+                u32 BFINAL = 0;
+                while (BFINAL == 0)
+                {
+                    BFINAL = consume_bits(&compressed_data, 1);
+                    u32 BTYPE = consume_bits(&compressed_data, 1);
+
+                    if (BTYPE == 0)
+                    {
+                        flush_byte(&compressed_data);
+
+                        u32 LEN = consume_bits(&compressed_data, 16);
+                        i32 NLEN = consume_bits(&compressed_data, 16);
+                        if (LEN != -NLEN)
+                        {
+                            fprintf(stderr, "Oops\n");
+                        }
+                    }
+                    else if (BTYPE == 3)
+                    {
+                        // NOTE(selina): This is bad
+                    }
+                    else
+                    {
+                        PNGHuffman literal_len_huffman;
+                        PNGHuffman distance_huffman;
+
+                        if (BTYPE == 2)
+                        {
+                            u32 HLIT = consume_bits(&compressed_data, 5);
+                            u32 HDIST = consume_bits(&compressed_data, 5);
+                            u32 HCLEN = consume_bits(&compressed_data, 4);
+
+                            HLIT += 257;
+                            HDIST += 1;
+                            HCLEN += 4;
+                            ASSERT(HCLEN <= array_count(HCLEN_translation_table));
+
+                            u32 HCLEN_code_table[array_count(HCLEN_translation_table)] = {};
+                            for (u32 index = 0; index < HCLEN; ++index)
+                            {
+                                HCLEN_code_table[HCLEN_translation_table[index]] = consume_bits(&compressed_data, 3);
+                            }
+                            
+                            PNGHuffman dict_huffman;
+                            create_huffman(array_count(HCLEN_translation_table), HCLEN_code_table, &dict_huffman);
+
+                            u32 huffman_codes[512];
+                            u32 huffman_codes_count = 0;
+                            while (huffman_codes_count < HLIT + HCLEN)
+                            {
+                                u32 repeat_count = 1;
+                                u32 repeat_value = 0;
+                                u32 encoded_value = decode_huffman(&dict_huffman, &compressed_data);
+
+                                if (encoded_value <= 15)
+                                {
+                                    repeat_value = encoded_value;
+                                }
+                                else if (encoded_value == 16)
+                                {
+                                    ASSERT(huffman_codes_count > 0);
+
+                                    repeat_count = 3 + consume_bits(&compressed_data, 2);
+                                    repeat_value = huffman_codes[huffman_codes_count - 1];
+                                }
+                                else if (encoded_value == 17)
+                                {
+                                    repeat_count = 3 + consume_bits(&compressed_data, 2);
+                                }
+                                else if (encoded_value == 18)
+                                {
+                                    repeat_count = 11 + consume_bits(&compressed_data, 7);
+                                }
+                                else
+                                {
+                                    // NOTE(selina): This is bad
+                                }
+
+                                while (repeat_count--)
+                                {
+                                    huffman_codes[huffman_codes_count++] = repeat_value;
+                                }
+                            }
+
+                            ASSERT(huffman_codes_count == HLIT + HCLEN);
+                        }
+                    }
+                }
             }
         }
     }

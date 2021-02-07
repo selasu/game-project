@@ -1,5 +1,5 @@
 #include "render.h"
-#include "../assert.h"
+#include "../macro_util.h"
 
 void push_quad(v3 p0, v3 p1, v3 p2, v3 p3, RenderState* render_state)
 {
